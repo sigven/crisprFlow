@@ -159,10 +159,11 @@ fc_data[['per_sgRNA']] <- readr::read_tsv(
   data_files[['count']][['fc_sgRNA']],
   show_col_types = FALSE)
 
+logo_fname_path <- system.file("extdata", "logo.png", package = "crisprFlow")
 
 ```
 
-<a href="https://sigven.github.io/crisprFlow">
+<a href="https://github.com/sigven/crisprFlow">
   <img src="`r logo_fname_path`" title="" alt="" align="right" width="80"/>
 </a>
 
