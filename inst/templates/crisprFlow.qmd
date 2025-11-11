@@ -1,0 +1,733 @@
+---
+title: "CRISPR-Cas9 drug-perturbation analysis report"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+bibliography: bibliography.bib
+resource-path:
+  - ../
+date-format: long
+#author:
+#  - name: Sigve Nakken
+#    orcid: 0000-0001-8468-2050
+#    affiliations:
+#      - ref: ous
+#    degrees:
+#      - PhD
+#affiliations:
+#  - id: ous
+#    name: Department of Tumor Biology, Institute for Cancer Research, Oslo University Hospital
+#    city: Oslo
+#    country: Norway
+#    url: https://ous-research.no/tumorbiology/
+title-block-banner: "#b60000"
+title-block-banner-color: "white"
+linkcolor: "#2780e3"
+nocite: |
+  @Tsherniak2017-ue
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    link-external-newwindow: true
+    page-layout: full
+    #fontsize: 0.99em
+    toc: true
+    toc-depth: 3
+    toc-title: Contents
+    grid:
+      body-width: 940px
+
+---
+
+```{r global_options}
+#| include: false
+#| echo: false
+
+knitr::opts_chunk$set(
+  echo = F,warning=FALSE, dpi=72, error=F, eval=T)
+
+options(scipen = 999)
+
+PROJECT_BASE_DIR <- 
+  "/Users/sigven/project_data/analysis/analysis__CRISPR"
+PROJECT_PREFIX <- 
+  "FGF401"
+PROJECT_OUTPUT_DIR <-
+  file.path(PROJECT_BASE_DIR, PROJECT_PREFIX, "output")
+COUNT_ALGORITHM <- 
+  "gcExact"
+
+TREATMENT_NAME <- "FGF401"
+CONTROL_NAME <- "DMSO"
+CELL_MODEL <- "RMS559"
+LIBRARY_NAME <- "Bassik"
+SUBLIBRARY_NAME <- "DTKP"
+TIMEPOINTS <- c("T0","T4","T10","T14")
+
+data_files <- list()
+data_files[['count']] <- list()
+data_files[['hit']] <- list()
+
+data_files[['count']][['count']] <-
+  file.path(
+    PROJECT_OUTPUT_DIR, "_counts", 
+    glue::glue("{PROJECT_PREFIX}_{COUNT_ALGORITHM}.count.txt"))
+    
+data_files[['count']][['summary']] <-
+  file.path(
+    PROJECT_OUTPUT_DIR, "_counts", 
+    glue::glue("{PROJECT_PREFIX}_{COUNT_ALGORITHM}.countsummary.txt"))
+
+data_files[['count']][['fc_gene']] <-
+  file.path(
+    PROJECT_OUTPUT_DIR, "_counts", 
+    glue::glue("{PROJECT_PREFIX}_{COUNT_ALGORITHM}_fc_gene.tsv"))
+
+data_files[['count']][['fc_sgRNA']] <-
+  file.path(
+    PROJECT_OUTPUT_DIR, "_counts", 
+    glue::glue("{PROJECT_PREFIX}_{COUNT_ALGORITHM}_fc_sgRNA.tsv"))
+
+
+
+data_files[['hit']][['mageck_mle']] <-
+  file.path(
+    PROJECT_OUTPUT_DIR, "_hits", COUNT_ALGORITHM,
+    glue::glue("{PROJECT_PREFIX}_mageck_mle.gene_summary.txt"))
+
+data_files[['hit']][['fpa']] <-
+  file.path(
+    PROJECT_OUTPUT_DIR, "_hits", COUNT_ALGORITHM,
+    glue::glue("{PROJECT_PREFIX}_fpa.rds"))
+
+```
+
+```{r load_data}
+#| include: false
+#| echo: false
+#| cache: false
+
+
+
+sgRNA_counts <- list()
+sgRNA_counts[['raw']] <- 
+  crisprFlow::read_sgRNA_counts2(
+    sgRNA_count_file = data_files[['count']][['count']],
+    normalize = FALSE)
+
+sgRNA_counts[['normalized']] <- 
+  crisprFlow::read_sgRNA_counts2(
+    sgRNA_count_file = data_files[['count']][['count']],
+    normalize = TRUE)
+
+
+sgRNA_summary <- crisprFlow::read_sgRNA_summary(
+  sgRNA_count_summary_file = 
+    data_files[['count']][['summary']])
+
+
+gini_index_plot <- crisprFlow::plot_sgRNA_gini_index(
+  sgRNA_summary = sgRNA_summary, 
+  plot_fontsize = 13)
+
+pca_plot <- crisprFlow::plot_sgRNA_pca(
+  sgRNA_counts = sgRNA_counts$normalized$targeted,
+  title = glue::glue(
+    "Targeted sgRNAs only (n = ", "{nrow(sgRNA_counts$normalized$targeted)})"))
+
+read_mapping_plot <- crisprFlow::plot_sgRNA_mapping(
+  sgRNA_summary = sgRNA_summary, 
+  plot_fontsize = 13)
+
+missing_guides_plot <- crisprFlow::plot_sgRNA_missing(
+  sgRNA_summary = sgRNA_summary, 
+  plot_fontsize = 13)
+
+readcount_dists <- crisprFlow::plot_sgRNA_histogram(
+  counts = sgRNA_counts$raw$targeted,
+  plot_fontsize = 13)
+
+n_targeted_genes <- length(unique(sgRNA_counts$raw$all$Gene)) - 2 # exclude controls
+n_targeted_sgrnas <- nrow(sgRNA_counts$raw$targeted)
+n_control_sgrnas <- nrow(sgRNA_counts$raw$controls)
+
+fc_data <- list()
+fc_data[['per_gene']] <- readr::read_tsv(
+  data_files[['count']][['fc_gene']],
+  show_col_types = FALSE)
+
+fc_data[['per_sgRNA']] <- readr::read_tsv(
+  data_files[['count']][['fc_sgRNA']],
+  show_col_types = FALSE)
+
+
+```
+
+<a href="https://sigven.github.io/crisprFlow">
+  <img src="`r logo_fname_path`" title="" alt="" align="right" width="80"/>
+</a>
+
+## Synopsis
+
+* This report summarizes the analysis of a CRISPR-Cas9 pooled screen investigating the effects of the drug **`r TREATMENT_NAME`** on gene perturbations in a cellular model (**`r CELL_MODEL`**). The CRISPR library used in this screen targets a total of: 
+
+   - **n = `r prettyNum(n_targeted_genes, big.mark = ",")` genes** 
+   - **n = `r prettyNum(n_targeted_sgrnas, big.mark = ",")` sgRNAs**, 
+   - **n = `r prettyNum(n_control_sgrnas, big.mark = ",")`** non-targeting control sgRNAs.
+
+* The analysis reported here includes quality control assessments of the sgRNA sequencing data, as well as identification of gene perturbation effects in response to drug treatment.
+
+### CRISPR-Cas9 library description
+
+* The CRISPR library used in this screen is designed to target a comprehensive set of genes relevant to the biological context under investigation. Each gene is targeted by multiple sgRNAs to ensure robust perturbation effects. The library also includes non-targeting control sgRNAs to facilitate normalization and assessment of non-specific effects.
+
+::: {.callout-note title="Genes with few sgRNAs"}
+
+Some genes in the library have a relatively low number of sgRNAs (i.e., less than 10), as indicated in the table below Caution should be exercised when interpreting results for these genes, as the limited number of sgRNAs may affect the robustness of the perturbation effects observed.
+
+:::
+
+<br><br>
+
+```{r library_description_table}
+#| echo: false
+#| cache: false
+#| eval: true
+#| output: asis
+
+genes_in_library <- 
+  crisprFlow::geneLibrary |>
+  dplyr::filter(
+    sublibrary_category == SUBLIBRARY_NAME
+  ) |>
+  dplyr::mutate(CRISPR_LIBRARY = glue::glue(
+    "<a href='https://www.addgene.org/pooled-library/bassik-human-crispr-knockout/' target='_blank'>Bassik - {sublibrary} ({sublibrary_category})</a>"
+  )) |>
+  dplyr::select(
+    symbol, genename, CRISPR_LIBRARY, 
+    num_guides, ensembl_gene_id
+  ) |>
+  dplyr::distinct()
+
+colnames(genes_in_library) <- 
+  toupper(colnames(genes_in_library))
+
+DT::datatable(
+  genes_in_library, 
+  escape = F, 
+  extensions = c("Buttons","Responsive"), 
+  options = list(
+    buttons = c('csv','excel'), 
+    dom = 'Bfrtip')) |>
+  DT::formatStyle(
+    color = "white", 
+    c("SYMBOL"), 
+    fontWeight = 'bold', 
+    `text-align` = 'center',
+    backgroundColor = DT::styleInterval(
+      c(1, 2, 4, 6, 8), 
+      c("#ffd8cb","#f6b49f", "#ea9075", 
+        "#db6c4e","#ca4428", "#b60000")
+      
+    ), valueColumns = 'NUM_GUIDES')
+
+
+```
+
+
+
+## Data quality control
+
+```{r summary_table}
+#| echo: false
+#| cache: false
+
+sgRNA_summary |> 
+  dplyr::select(-c("label","total_sgrnas")) |>
+  dplyr::mutate(
+    file = basename(file)) |>
+  gt::gt() |>
+  gt::tab_header(
+    title = "Key summary statistics - sequencing"
+  )
+
+```
+
+
+### Reads per sample - read mapping/assignment rate
+
+
+* This plot shows the distribution of read counts per sample, indicating the relative proportion of sgRNA-mapped reads to the totality of reads sequenced per sample.
+
+<br>
+
+`r read_mapping_plot$plotly`
+
+
+### Library coverage and representation
+
+* The plots below show the distribution of sgRNA read counts per sample, indicating the coverage and representation of sgRNAs in each sample.
+
+* The first plot shows the distribution of read counts for the initial timepoint (**T0**), representing the baseline sgRNA abundance before any treatment.
+
+<br><br>
+
+`r readcount_dists$T0$T0$plot$plotly`
+
+<br><br>
+
+::: {.panel-tabset}
+
+
+#### Untreated samples (`r CONTROL_NAME`)
+
+```{r control_samples_coverage}
+#| echo: false
+#| cache: false
+#| output: asis
+#| eval: true
+
+
+plots <- lapply(
+  names(readcount_dists$control), function(timepoint) {
+    readcount_dists$control[[timepoint]]$plot$plotly
+})
+
+htmltools::tagList(plots)
+
+```
+
+#### Drug-treated samples (`r TREATMENT_NAME`)
+
+```{r treatment_samples_coverage}
+#| echo: false
+#| cache: false
+#| output: asis
+#| eval: true
+
+
+plots <- lapply(
+  names(readcount_dists$treatment), function(timepoint) {
+    readcount_dists$treatment[[timepoint]]$plot$plotly
+})
+
+htmltools::tagList(plots)
+
+```
+
+
+::: 
+
+<br>
+
+::: {layout-ncol=2}
+`r missing_guides_plot$plotly`
+
+`r gini_index_plot$plotly`
+
+:::
+
+
+### Replicate & sample relationships
+
+* Shown below are scatter plots showing observed log2-fold-change (**LFC**) in abundance of each sgRNA (or at the gene-level, using mean sgRNA abundance) for two conditions (drug _versus_ T0 against control _versus_ T0).
+
+::: {.callout-note}
+
+The data underlying these fold-changes is raw and unmodeled, based on normalized count ratios. Separation of biological signal from sampling noise is not performed. So while these fold-changes are intuitive, they’re also “noisy” and can underestimate or overestimate true effects.
+
+:::
+
+
+```{r scatter_plots_LFC}
+#| echo: false
+#| cache: false
+#| eval: true
+
+sgRNA_scatterplots <- list()
+for( timepoint in TIMEPOINTS ) {
+  if( timepoint == "T0" ) next
+  sgRNA_scatterplots[[timepoint]] <- list()
+  sgRNA_scatterplots[[timepoint]][['per_sgRNA']] <- 
+    crisprFlow::plot_fc_scatterplot(
+      sgRNA_fc_df = fc_data$per_sgRNA,
+      plot_fontsize = 17,
+      x_column = paste0(timepoint,"_control_vs_T0_FC"),
+      y_column = paste0(timepoint,"_drug_vs_T0_FC"),
+      title = paste0(timepoint," - sgRNA-level LFC"))
+  
+  sgRNA_scatterplots[[timepoint]][['per_gene']] <- 
+    crisprFlow::plot_fc_scatterplot(
+      sgRNA_fc_df = fc_data$per_gene,
+      per_sgRNA = FALSE,
+      x_column = paste0(timepoint,"_control_vs_T0_FC"),
+      y_column = paste0(timepoint,"_drug_vs_T0_FC"),
+      title = paste0(timepoint," - gene-level LFC"))
+  
+}
+
+```
+
+<br><br>
+
+
+```{r scatterplots_sgRNA_level}
+#| echo: false
+#| cache: false
+#| eval: true 
+#| fig.width: 15
+#| fig.height: 6
+
+ggpubr::ggarrange(
+  sgRNA_scatterplots$T4$per_sgRNA$ggplot,
+  sgRNA_scatterplots$T10$per_sgRNA$ggplot,
+  sgRNA_scatterplots$T14$per_sgRNA$ggplot,
+  nrow = 1, ncol = 3,
+  common.legend = TRUE,
+  legend = "right"
+)
+
+```
+
+<br><br>
+
+```{r sgRNA_scatterplots_per_gene}
+#| echo: false
+#| cache: false
+#| output: asis
+
+htmltools::tagList(
+  htmltools::div(style = "display: flex; justify-content: space-between;",
+    htmltools::div(style = "width: 32%;", sgRNA_scatterplots$T4$per_gene$plotly),
+    htmltools::div(style = "width: 32%;", sgRNA_scatterplots$T10$per_gene$plotly),
+    htmltools::div(style = "width: 32%;", sgRNA_scatterplots$T14$per_gene$plotly)
+  )
+)
+```
+
+<br><br>
+
+* Principal component analysis (PCA) plot showing the relationships between samples based on sgRNA abundance profiles.
+
+<br>
+
+```{r pca_plot}
+#| echo: false
+#| cache: false
+#| eval: true
+#| fig.width: 10
+#| fig.height: 8
+#| output: asis
+#| fig.align: center
+
+pca_plot$plotly
+```
+
+<br><br>
+
+## Modeling of gene perturbation effects
+
+### MAGeCK-MLE analysis
+
+* **MAGeCK-mle** is an algorithm that performs statistical modeling of gene perturbation effects in pooled CRISPR–Cas9 screens. It uses a maximum likelihood estimation (MLE) framework to estimate the effects of gene knockouts on cell fitness or other phenotypes, while accounting for various sources of variability in the data. **MAGeCK-mle** uses a measurement called *beta score* to call gene essentialities: a positive beta score means a gene is positively selected, and a negative beta score means a gene is negatively selected. It is similar to the term log fold change in differential expression.
+
+* Here, we exploit the time-dependent measurements in drug-treated samples and controls **MAGeCK-mle** to calculate *beta scores* along three distinct dimensions:
+ 
+   * **Common** effects across all timepoints (i.e., genes that affect cell fitness regardless of drug treatment)
+   * **Late-vs-early** effects (i.e., genes that affect cell fitness differently at late timepoints (T10, T14) compared to early timepoints)
+   * **Drug-treatment** effects (i.e., genes that affect cell fitness specifically in the presence of drug treatment)
+
+::: {.callout-note title="Hits with a p-value = 0"}
+
+In the plots below, some genes may have a p-value of exactly 0 due to limitations in numerical precision. These genes are indicated with a different shape in the plots.
+
+:::
+
+```{r mageck_mle_hits_table}
+#| echo: false
+#| cache: false
+#| eval: true
+
+all_mageck_hit_data <- as.data.frame(
+  readr::read_tsv(
+    data_files$hit$mageck_mle, show_col_types = F) |> 
+  janitor::clean_names())
+
+hits <- list()
+plots <- list()
+epsilon <- 1e-300
+for(hittype in c('common','late_vs_early','drug_treated')) {
+  hits[[hittype]] <- all_mageck_hit_data |>
+    dplyr::select(
+      c("gene", dplyr::contains(
+        paste0(hittype,"_")))) |>
+    dplyr::filter(
+      !stringr::str_detect(gene,"_CTRL$")
+    ) 
+  
+  names(hits[[hittype]]) <- 
+    gsub(paste0(hittype,"_"), "", names(hits[[hittype]]))
+  
+  hits[[hittype]] <- hits[[hittype]] |>
+    dplyr::arrange(p_value, fdr)
+  hits[[hittype]]$color <- 
+    ifelse(hits[[hittype]]$beta > 0, "positive", "negative")
+  hits[[hittype]]$p_plot <- -log10(
+    pmax(epsilon,hits[[hittype]]$p_value))
+  hits[[hittype]]$fdr_plot <- -log10(
+    pmax(epsilon,hits[[hittype]]$fdr))
+  
+  # set a visible y cap (for plotting only)
+  y_cap <- ceiling(
+    max(hits[[hittype]][hits[[hittype]]$p_value > 0,]$p_plot) + 1)  # adjust as needed for your data
+  hits[[hittype]]$p_plot_capped <- 
+    pmin(hits[[hittype]]$p_plot, y_cap)
+  
+  hits[[hittype]]$is_capped <- hits[[hittype]]$p_plot > y_cap
+  
+  plots[[hittype]] <-
+    ggplot2::ggplot(
+      hits[[hittype]],
+      ggplot2::aes(
+        x = beta, 
+        y = p_plot_capped, 
+        color = color,
+        text =
+          paste("Gene:", gene,
+                "<br>p-value: ", p_value,
+                "<br>FDR: ", fdr,
+                "<br>Effect size (beta): ",beta))) +
+    ggplot2::geom_point(
+      ggplot2::aes(
+        shape = is_capped), size = 2, alpha = 0.8) +
+    ggplot2::scale_color_manual(
+      values = c("negative" = "#A73030FF", 
+                 "positive" = "#003C67FF")) +
+    ggplot2::theme_minimal(base_size = 14) +
+    ggplot2::scale_y_continuous(
+      name = expression(-log[10](p-value)),
+      limits = c(0, y_cap),
+      breaks = seq(0, y_cap, by = 1)
+    ) +
+    ggplot2::labs(
+      x = "Beta (effect size)",
+      y = expression(-log[10](p-value)),
+      color = "Effect direction",
+      shape = "p = 0"
+    )
+  
+  plots[[hittype]] <- plotly::ggplotly(
+    plots[[hittype]], tooltip = "text")
+  
+  plots[[hittype]]$x$layout$showlegend <- FALSE
+  
+  hits[[hittype]] <- 
+    hits[[hittype]] |>
+    dplyr::select(
+      c("gene", "beta", "z", "p_value", "fdr")
+    ) |>
+    dplyr::inner_join(
+      crisprFlow::geneLibrary |>
+        dplyr::select(
+          symbol, genename, num_guides,
+        ) |>
+        dplyr::distinct(),
+      by = c("gene" = "symbol")
+    ) |>
+    dplyr::select(
+      gene, genename, num_guides, 
+      beta, z, p_value, fdr
+    ) |>
+    dplyr::arrange(
+      p_value, beta
+    )
+  
+  colnames(hits[[hittype]]) <- 
+    c("GENE", "GENENAME", "NUM_GUIDES", 
+      "BETA", "Z", "P_VALUE", "FDR")
+  
+}
+
+
+
+```
+
+<br><br>
+
+::: {.panel-tabset}
+
+#### Common hits
+
+```{r common_hits}
+#| echo: false
+#| cache: false
+#| eval: true
+#| output: asis
+#| fig.width: 12
+#| fig.height: 9
+
+plots$common
+
+```
+
+<br><br>
+
+```{r common_hits_table}
+#| echo: false
+#| cache: false
+#| eval: true
+#| output: asis
+
+DT::datatable(
+  hits$common, 
+  escape = F, 
+  extensions = c("Buttons","Responsive"), 
+  options = list(
+    buttons = c('csv','excel'), 
+    dom = 'Bfrtip')) |>
+  DT::formatSignif(
+    columns = c("BETA","Z","P_VALUE","FDR"), digits = 4) |>
+  DT::formatStyle(
+    color = "white",
+    c("NUM_GUIDES"),
+    fontWeight = 'bold',
+    `text-align` = 'center',
+    backgroundColor = DT::styleInterval(
+      c(1, 2, 4, 6, 8),
+      c("#ffd8cb","#f6b49f", "#ea9075",
+        "#db6c4e","#ca4428", "#b60000")
+    ), valueColumns = 'NUM_GUIDES') |>
+  DT::formatStyle(
+    color = "white",
+    c("BETA"),
+    fontWeight = 'bold',
+    `text-align` = 'center',
+    backgroundColor = DT::styleInterval(
+      c(0),
+      c("#B60000","#003C67FF")
+    )
+  )
+
+
+```
+
+#### Late-vs-early hits
+
+```{r late_vs_early_hits}
+#| echo: false
+#| cache: false
+#| eval: true
+#| output: asis
+#| fig.width: 12
+#| fig.height: 9
+
+plots$late_vs_early
+
+```
+
+<br><br>
+
+```{r late_vs_early_hits_table}
+#| echo: false
+#| cache: false
+#| eval: true
+#| output: asis
+
+DT::datatable(
+  hits$late_vs_early, 
+  escape = F, 
+  extensions = c("Buttons","Responsive"), 
+  options = list(
+    buttons = c('csv','excel'), 
+    dom = 'Bfrtip')) |>
+  DT::formatSignif(
+    columns = c("BETA","Z","P_VALUE","FDR"), digits = 4) |>
+  DT::formatStyle(
+    color = "white",
+    c("NUM_GUIDES"),
+    fontWeight = 'bold',
+    `text-align` = 'center',
+    backgroundColor = DT::styleInterval(
+      c(1, 2, 4, 6, 8),
+      c("#ffd8cb","#f6b49f", "#ea9075",
+        "#db6c4e","#ca4428", "#b60000")
+    ), valueColumns = 'NUM_GUIDES') |>
+  DT::formatStyle(
+    color = "white",
+    c("BETA"),
+    fontWeight = 'bold',
+    `text-align` = 'center',
+    backgroundColor = DT::styleInterval(
+      c(0),
+      c("#B60000","#003C67FF")
+    )
+  )
+
+
+```
+
+
+#### Drug-treatment hits
+
+```{r drug_treated_hits}
+#| echo: false
+#| cache: false
+#| eval: true
+#| output: asis
+#| fig.width: 12
+#| fig.height: 9
+
+plots$drug_treated
+
+```
+
+<br><br>
+
+```{r drug_treatment_hits_table}
+#| echo: false
+#| cache: false
+#| eval: true
+#| output: asis
+
+DT::datatable(
+  hits$drug_treated, 
+  escape = F, 
+  extensions = c("Buttons","Responsive"), 
+  options = list(
+    buttons = c('csv','excel'), 
+    dom = 'Bfrtip')) |>
+  DT::formatSignif(
+    columns = c("BETA","Z","P_VALUE","FDR"), digits = 4) |>
+  DT::formatStyle(
+    color = "white",
+    c("NUM_GUIDES"),
+    fontWeight = 'bold',
+    `text-align` = 'center',
+    backgroundColor = DT::styleInterval(
+      c(1, 2, 4, 6, 8),
+      c("#ffd8cb","#f6b49f", "#ea9075",
+        "#db6c4e","#ca4428", "#b60000")
+    ), valueColumns = 'NUM_GUIDES') |>
+  DT::formatStyle(
+    color = "white",
+    c("BETA"),
+    fontWeight = 'bold',
+    `text-align` = 'center',
+    backgroundColor = DT::styleInterval(
+      c(0),
+      c("#B60000","#003C67FF")
+    )
+  )
+
+
+```
+
+:::
+
+<br><br>
+
+
+## References
+
+::: {#refs}
+:::
+

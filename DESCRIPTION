@@ -1,0 +1,33 @@
+Package: crisprFlow
+Type: Package
+Title: Functions to analyze and visualize CRISPR perturbation data
+Version: 0.1.0
+Authors@R:
+    c(person(given = "Sigve",
+             family = "Nakken",
+             role = c("aut", "cre"),
+             email = "sigven@ifi.uio.no",
+             comment = c(ORCID = "0000-0001-8468-2050"))
+      )
+Maintainer: Sigve Nakken <sigven@ifi.uio.no>
+URL: https://github.com/sigven/crisprFlow,
+    https://sigven.github.io/crisprFlow/
+BugReports: https://github.com/sigven/crisprFlow/issues
+Description: More about what it does (maybe more than one line).
+    Continuation lines should be indented.
+License: AGPL (>= 3)
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.3
+Imports: 
+    assertthat,
+    caret,
+    dplyr,
+    ggplot2,
+    ggsci,
+    glue,
+    janitor,
+    readr,
+    stringr
+Depends: 
+    R (>= 3.5)
