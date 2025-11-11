@@ -183,7 +183,7 @@ logo_fname_path <- system.file("extdata", "logo.png", package = "crisprFlow")
 
 ::: {.callout-note title="Genes with few sgRNAs"}
 
-Some genes in the library have a relatively low number of sgRNAs (i.e., less than 10), as indicated in the table below Caution should be exercised when interpreting results for these genes, as the limited number of sgRNAs may affect the robustness of the perturbation effects observed.
+Some genes in the library have a relatively low number of sgRNAs (i.e., less than 10), as indicated in the table below. Caution should be exercised when interpreting results for these genes, as the limited number of sgRNAs may affect the robustness of the perturbation effects observed.
 
 :::
 
@@ -269,6 +269,16 @@ sgRNA_summary |>
 * The plots below show the distribution of sgRNA read counts per sample, indicating the coverage and representation of sgRNAs in each sample.
 
 * The first plot shows the distribution of read counts for the initial timepoint (**T0**), representing the baseline sgRNA abundance before any treatment.
+
+::: {.callout-important title="sgRNA Pseudocounts"}
+
+Note that all counts have been added a pseudocount of 1 prior to plotting, 
+to allow visualization of sgRNAs with zero counts. This means that the minimum count 
+value shown in the plots is 1.
+
+:::
+
+
 
 <br><br>
 

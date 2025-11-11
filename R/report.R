@@ -703,7 +703,8 @@ plot_sgRNA_gini_index <- function(
 #' @param title_y_right_margin Right margin for the y-axis title (default is
 #' @param plot_fontsize Font size for the plot text elements (default is 11
 #'
-#' @return A list of ggplot2 objects representing the sgRNA count distribution histograms
+#' @return A list of ggplot2 objects representing the sgRNA count
+#' distribution histograms
 #' @export
 #'
 plot_sgRNA_histogram <- function(
