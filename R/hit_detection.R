@@ -146,7 +146,7 @@ detect_hits_mageck_mle <- function(
 
   if(!file.exists(gene_output_fname)){
     stop(glue::glue(
-    "Expected output file not found: {gene_output_fname} Please check log files for errors."))
+      "Expected output file not found: {gene_output_fname} Please check log files for errors."))
   } else {
     hits <- as.data.frame(readr::read_tsv(
       gene_output_fname,
@@ -454,202 +454,288 @@ detect_hits_drugz <- function(
 
 
 
-#' Estimate log2 fold change of sgRNA counts between drug and control
+#' Estimate log2 fold change of sgRNA counts between arbitrary conditions
 #'
-#' This function estimates the log2 fold change of sgRNA counts
-#' between drug and control conditions at various timepoints.
-#' It normalizes the counts to counts per million (CPM)
-#' and computes the log2 fold change for each timepoint.
+#' Normalizes raw sgRNA counts to CPM and computes log2 fold changes for any
+#' set of condition pairs specified via a comparisons table. Replicate columns
+#' are resolved through the samplesheet and collapsed either by averaging CPM
+#' before computing FC, or by computing per-replicate FC and then averaging.
 #'
-#' @param counts A data frame containing raw sgRNA counts with columns:
-#' 'sgRNA', 'Gene', and count columns for different conditions
-#' (e.g., 'T4_DMSO', 'T4_FGF401', etc.).
-#' @param control_name A character string specifying the control condition name
-#' (default is "DMSO").
-#' @param output_dir Directory where output files will be saved (not used in current implementation).
-#' @param output_prefix Prefix for output files (not used in current implementation).
-#' @param overwrite Boolean indicating whether to overwrite existing files
-#' @param drug_name A character string specifying the drug condition name
-#' (default is "FGF401").
-#' @return A data frame with normalized counts and log2 fold change columns
-#' for each timepoint.
+#' The samplesheet must contain at least \code{sample_label} and
+#' \code{condition} columns. If a \code{replicate} column is present, count
+#' column names are expected to follow the pattern
+#' \code{<sample_label>_<replicate>} (e.g. \code{Bottom_B1}); otherwise just
+#' \code{<sample_label>} is used.
+#'
+#' When only a single replicate exists for either condition in a comparison,
+#' \code{replicate_method} is ignored and the single-column CPM value is used
+#' directly.
+#'
+#' @param counts A data frame with columns \code{sgRNA}, \code{Gene}, and one
+#'   column per sample whose names match those derived from the samplesheet.
+#' @param samplesheet A data frame with at least columns \code{sample_label}
+#'   and \code{condition}. An optional \code{replicate} column drives the
+#'   mapping from condition to count columns.
+#' @param comparisons A data frame with columns \code{numerator},
+#'   \code{denominator}, and \code{label} defining which condition pairs to
+#'   compare and the prefix used for the output FC columns.
+#' @param replicate_method How to handle multiple replicates per condition.
+#'   \code{"mean_cpm_then_fc"} (default) averages CPM across replicates first,
+#'   then computes a single log2FC. \code{"per_replicate_fc"} computes log2FC
+#'   for each replicate pair (matched when counts are equal, all-pairwise
+#'   otherwise) and reports the mean; a \code{_log2FC_sd} column is also added
+#'   when more than one pair exists.
+#' @param pseudo_count Pseudo-count added before taking log2 ratios to avoid
+#'   log(0) (default 1).
+#' @param output_dir Directory where output TSV files are written.
+#' @param output_prefix Prefix for the output file names (default
+#'   \code{"crisprFlow"}).
+#' @param overwrite If \code{FALSE} (default) and output files already exist,
+#'   they are read and returned without recomputing.
+#' @param control_pattern Pattern identifying negative-control sgRNAs; not used
+#'   in the computation but retained for consistency with the rest of the
+#'   package API.
+#'
+#' @return A named list with elements \code{per_sgRNA} and \code{per_gene}.
+#'   Each is a data frame containing mean CPM columns for every referenced
+#'   condition, log2FC columns (and optionally SD columns) for every
+#'   comparison, and — for \code{per_gene} — values averaged across the sgRNAs
+#'   targeting each gene.
+#'
 #' @export
 #'
 estimate_fold_change <- function(
     counts = NULL,
-    control_name = "DMSO",
+    samplesheet = NULL,
+    comparisons = NULL,
+    replicate_method = c("mean_cpm_then_fc",
+                         "per_replicate_fc"),
+    pseudo_count = 1,
     output_dir = NULL,
-    output_prefix = "FGF401",
+    output_prefix = "crisprFlow",
     overwrite = FALSE,
-    drug_name = "FGF401"){
+    control_pattern = "TARGETING_NEG_CTRL") {
 
-  ## initialize results list
-  fold_change_results <- list()
-  for(cat in c('per_sgRNA','per_gene')){
-    fold_change_results[[cat]] <- data.frame()
-  }
+  replicate_method <- match.arg(replicate_method)
+
+  fold_change_results <- list(
+    per_sgRNA = data.frame(),
+    per_gene  = data.frame()
+  )
 
   assertthat::assert_that(
     !is.null(output_dir) & dir.exists(output_dir),
-    msg = "Please provide path to output_dir"
+    msg = "Please provide a valid path to output_dir"
   )
 
-  output_fname_fc_sgrna <-
-    file.path(
-      output_dir,
-      glue::glue("{output_prefix}_fc_sgRNA.tsv"))
-  output_fname_fc_gene <-
-    file.path(
-      output_dir,
-      glue::glue("{output_prefix}_fc_gene.tsv"))
-  if(!overwrite &
-     file.exists(output_fname_fc_sgrna) &
-     file.exists(output_fname_fc_gene)){
-    message(glue::glue("Fold change output files already exist:\n",
-                       "{output_fname_fc_sgrna}\n",
-                       "{output_fname_fc_gene}\n"))
-    fold_change_results[['per_sgRNA']] <-
-      as.data.frame(readr::read_tsv(
-        output_fname_fc_sgrna,
-        show_col_types = F,
-        na = c(".","", "NA")))
-    fold_change_results[['per_gene']] <-
-      as.data.frame(readr::read_tsv(
-        output_fname_fc_gene,
-        show_col_types = F,
-        na = c(".","", "NA")))
+  output_fname_fc_sgrna <- file.path(
+    output_dir, glue::glue("{output_prefix}_fc_sgRNA.tsv"))
+  output_fname_fc_gene <- file.path(
+    output_dir, glue::glue("{output_prefix}_fc_gene.tsv"))
+
+  if (!overwrite &
+      file.exists(output_fname_fc_sgrna) &
+      file.exists(output_fname_fc_gene)) {
+    message(glue::glue(
+      "Fold change output files already exist:\n",
+      "{output_fname_fc_sgrna}\n",
+      "{output_fname_fc_gene}\n"))
+    fold_change_results[["per_sgRNA"]] <- as.data.frame(
+      readr::read_tsv(output_fname_fc_sgrna,
+                      show_col_types = FALSE, na = c(".", "", "NA")))
+    fold_change_results[["per_gene"]] <- as.data.frame(
+      readr::read_tsv(output_fname_fc_gene,
+                      show_col_types = FALSE, na = c(".", "", "NA")))
     return(fold_change_results)
   }
 
+  ## --- input validation ---------------------------------------------------
 
   assertthat::assert_that(
-    !is.null(counts),
-    msg = "Please provide counts data frame"
-  )
-  assertthat::assert_that(
-    is.data.frame(counts),
+    !is.null(counts) & is.data.frame(counts),
     msg = "counts must be a data frame"
   )
   assertable::assert_colnames(
-    counts,
-    c("sgRNA","Gene","T0"),
-    only_colnames = F,
-    quiet = T
+    counts, c("sgRNA", "Gene"), only_colnames = FALSE, quiet = TRUE)
+
+  assertthat::assert_that(
+    !is.null(samplesheet) & is.data.frame(samplesheet),
+    msg = "samplesheet must be a data frame"
+  )
+  assertable::assert_colnames(
+    samplesheet, c("sample_label", "condition"),
+    only_colnames = FALSE, quiet = TRUE)
+
+  assertthat::assert_that(
+    !is.null(comparisons) & is.data.frame(comparisons),
+    msg = "comparisons must be a data frame"
+  )
+  assertable::assert_colnames(
+    comparisons, c("numerator", "denominator", "label"),
+    only_colnames = FALSE, quiet = TRUE)
+
+  assertthat::assert_that(
+    is.numeric(pseudo_count) & pseudo_count >= 0,
+    msg = "pseudo_count must be a non-negative number"
   )
 
-  df <- counts
+  ## --- build condition -> count-column mapping ----------------------------
 
-  ## Raw counts differ by sequencing depth, so first normalize —
-  ## typically to counts per million (CPM)
-  norm_counts <- df |>
+  has_replicate_col <-
+    "replicate" %in% colnames(samplesheet) &&
+    !all(is.na(samplesheet[["replicate"]]))
+
+  sample_map <- samplesheet |>
+    dplyr::select(dplyr::any_of(
+      c("sample_label", "condition", "replicate"))) |>
+    dplyr::distinct() |>
     dplyr::mutate(
-      dplyr::across(-c(sgRNA, Gene), ~ .x / sum(.x) * 1e6))
+      count_col = if (has_replicate_col) {
+        paste0(.data$sample_label, "_", .data$replicate)
+      } else {
+        .data$sample_label
+      }
+    ) |>
+    dplyr::filter(.data$count_col %in% colnames(counts))
 
-  drug_cols <- grep(
-    drug_name, colnames(norm_counts), value = TRUE)
-  control_cols <- grep(
-    control_name, colnames(norm_counts), value = TRUE)
-  assertthat::assert_that(
-    length(drug_cols) > 0,
-    msg = glue::glue("No columns found for drug: {drug_name}")
-  )
-  assertthat::assert_that(
-    length(control_cols) > 0,
-    msg = glue::glue("No columns found for control: {control_name}")
-  )
-  # Extract timepoint suffixes shared between drug and control columns
-  timepoints <- intersect(
-    stringr::str_remove(
-      drug_cols, paste0("_",drug_name,"$")),
-    stringr::str_remove(
-      control_cols, paste0("_",control_name,"$"))
-  )
-
-  if(length(timepoints) == 0){
-    stop("No matching timepoints found between drug and control columns")
+  if (nrow(sample_map) == 0) {
+    stop(paste0(
+      "No count columns could be matched from the samplesheet. ",
+      "Check that sample_label",
+      if (has_replicate_col) " + replicate" else "",
+      " columns correspond to count table column names."))
   }
 
-  logfc_df <- norm_counts
+  ## --- CPM normalisation --------------------------------------------------
 
-  ## Calculate log2 fold change for each timepoint
-  ## drug vs control and control vs T0
-  for (tp in timepoints) {
-    drug_col <- paste0(tp,"_",drug_name)
-    ctrl_col <- paste0(tp,"_",control_name)
-    t0_col <- "T0"
-    if(!(drug_col %in% colnames(logfc_df)) |
-       !(ctrl_col %in% colnames(logfc_df))){
-      next
+  ## Normalise every matched sample column independently so that columns
+  ## with different sequencing depths are comparable.
+  sample_cols <- unique(sample_map$count_col)
+  norm_counts <- counts
+  norm_counts[, sample_cols] <- lapply(
+    counts[, sample_cols, drop = FALSE],
+    function(x) x / sum(x, na.rm = TRUE) * 1e6
+  )
+
+  ## --- build result data frame --------------------------------------------
+
+  result_df <- counts[, c("sgRNA", "Gene")]
+
+  ## Add mean CPM per condition for every condition referenced in comparisons
+  all_conditions <- unique(
+    c(comparisons$numerator, comparisons$denominator))
+
+  for (cond in all_conditions) {
+    cond_cols <- sample_map |>
+      dplyr::filter(.data$condition == cond) |>
+      dplyr::pull(.data$count_col)
+
+    if (length(cond_cols) == 0) {
+      stop(glue::glue("No count columns found for condition: '{cond}'"))
     }
-    fc_col <- paste0(tp,"_drug_vs_control_FC")
 
-    ## add 1 to avoid log2(0)
-
-    ## Drug vs Control
-    logfc_df[[fc_col]] <- round(
-      log2((logfc_df[[drug_col]] + 1) /
-             (logfc_df[[ctrl_col]] + 1)), digits = 4)
-
-    ## Control vs T0
-    fc_ctrl_col <- paste0(tp,"_control_vs_T0_FC")
-    logfc_df[[fc_ctrl_col]] <- round(
-      log2((logfc_df[[ctrl_col]] + 1) /
-             (logfc_df[[t0_col]] + 1)), digits = 4)
-
-    ## Drug vs T0
-    fc_drug_col <- paste0(tp,"_drug_vs_T0_FC")
-    logfc_df[[fc_drug_col]] <- round(
-      log2((logfc_df[[drug_col]] + 1) /
-             (logfc_df[[t0_col]] + 1)), digits = 4)
-
+    cpm_col <- paste0(cond, "_mean_CPM")
+    result_df[[cpm_col]] <- round(
+      if (length(cond_cols) == 1) {
+        norm_counts[[cond_cols]]
+      } else {
+        rowMeans(norm_counts[, cond_cols, drop = FALSE], na.rm = TRUE)
+      },
+      digits = 4)
   }
 
-  ## round normalized sgRNA counts to 4 decimal places
-  for(col in colnames(logfc_df)){
-    if(endsWith(col,"_FC") |
-       col == "sgRNA" |
-       col == "Gene"){
-      next
-    }
-    if(is.numeric(logfc_df[[col]])){
-      logfc_df[[col]] <-
-        round(logfc_df[[col]], digits = 4)
+  ## --- compute fold changes -----------------------------------------------
+
+  for (i in seq_len(nrow(comparisons))) {
+    num_cond   <- comparisons$numerator[i]
+    den_cond   <- comparisons$denominator[i]
+    comp_label <- comparisons$label[i]
+
+    num_cols <- sample_map |>
+      dplyr::filter(.data$condition == num_cond) |>
+      dplyr::pull(.data$count_col)
+    den_cols <- sample_map |>
+      dplyr::filter(.data$condition == den_cond) |>
+      dplyr::pull(.data$count_col)
+
+    use_mean_first <-
+      replicate_method == "mean_cpm_then_fc" ||
+      length(num_cols) <= 1 ||
+      length(den_cols) <= 1
+
+    fc_col <- paste0(comp_label, "_log2FC")
+
+    if (use_mean_first) {
+      avg_num <- if (length(num_cols) == 1) {
+        norm_counts[[num_cols]]
+      } else {
+        rowMeans(norm_counts[, num_cols, drop = FALSE], na.rm = TRUE)
+      }
+      avg_den <- if (length(den_cols) == 1) {
+        norm_counts[[den_cols]]
+      } else {
+        rowMeans(norm_counts[, den_cols, drop = FALSE], na.rm = TRUE)
+      }
+      result_df[[fc_col]] <- round(
+        log2((avg_num + pseudo_count) / (avg_den + pseudo_count)),
+        digits = 4)
+
+    } else {
+      ## per-replicate FC: matched when equal counts, all-pairwise otherwise
+      if (length(num_cols) == length(den_cols)) {
+        pairs <- data.frame(
+          num = num_cols, den = den_cols, stringsAsFactors = FALSE)
+      } else {
+        pairs <- expand.grid(
+          num = num_cols, den = den_cols, stringsAsFactors = FALSE)
+      }
+
+      fc_matrix <- vapply(seq_len(nrow(pairs)), function(p) {
+        log2((norm_counts[[pairs$num[p]]] + pseudo_count) /
+               (norm_counts[[pairs$den[p]]] + pseudo_count))
+      }, numeric(nrow(norm_counts)))
+
+      if (!is.matrix(fc_matrix)) {
+        fc_matrix <- matrix(fc_matrix, ncol = 1)
+      }
+
+      result_df[[fc_col]] <- round(rowMeans(fc_matrix), digits = 4)
+
+      if (ncol(fc_matrix) > 1) {
+        sd_col <- paste0(comp_label, "_log2FC_sd")
+        result_df[[sd_col]] <- round(
+          apply(fc_matrix, 1, sd), digits = 4)
+      }
     }
   }
 
-  fold_change_results[['per_sgRNA']] <- logfc_df
+  fold_change_results[["per_sgRNA"]] <- result_df
 
-  cols_to_summarise <-
-    c("sgRNA","Gene",
-      grep(colnames(logfc_df),
-           pattern = "_FC$",
-           value = TRUE))
-
-  fold_change_results[['per_gene']] <- logfc_df |>
-    dplyr::group_by(Gene) |>
+  ## per-gene summary: mean across sgRNAs for all numeric columns
+  fold_change_results[["per_gene"]] <- result_df |>
+    dplyr::group_by(.data$Gene) |>
     dplyr::reframe(
-      dplyr::across(
-        -c(sgRNA), ~ round(mean(.x), digits = 4)
-      )
+      dplyr::across(where(is.numeric), ~ round(mean(.x, na.rm = TRUE),
+                                               digits = 4))
     ) |>
     dplyr::distinct()
 
-  ## write output files
+  ## --- write output -------------------------------------------------------
+
   readr::write_tsv(
-    fold_change_results[['per_sgRNA']],
+    fold_change_results[["per_sgRNA"]],
     file = output_fname_fc_sgrna,
     col_names = TRUE, quote = "none")
-  message(glue::glue("Fold change per sgRNA output file written: ",
-                     "{output_fname_fc_sgrna}\n"))
+  message(glue::glue(
+    "Fold change per sgRNA output file written: {output_fname_fc_sgrna}\n"))
+
   readr::write_tsv(
-    fold_change_results[['per_gene']],
+    fold_change_results[["per_gene"]],
     file = output_fname_fc_gene,
     col_names = TRUE, quote = "none")
-  message(glue::glue("Fold change per gene output file written: ",
-                     "{output_fname_fc_gene}\n"))
+  message(glue::glue(
+    "Fold change per gene output file written: {output_fname_fc_gene}\n"))
 
   return(fold_change_results)
 
 }
-
-

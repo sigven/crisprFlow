@@ -18,7 +18,6 @@ Description: More about what it does (maybe more than one line).
 License: AGPL (>= 3)
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.3.3
 Imports: 
     assertthat,
     caret,
@@ -31,3 +30,4 @@ Imports:
     stringr
 Depends: 
     R (>= 3.5)
+Config/roxygen2/version: 8.0.0

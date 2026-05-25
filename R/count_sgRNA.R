@@ -162,9 +162,12 @@ count_sgRNA_mageck <- function(
 
   ## delete Rmarkdown templates from MAGeCK - not used
   ## delete redunant log file
-  system(glue::glue("rm -f {output_dir}/{output_prefix}_countsummary.R*"))
-  system(glue::glue("rm -f {output_dir}/{output_prefix}.count_report.Rmd"))
-  system(glue::glue("rm -f {output_dir}/{output_prefix}.mageck_count.log"))
+  system(glue::glue(
+    "rm -f {output_dir}/{output_prefix}_countsummary.R*"))
+  system(glue::glue(
+    "rm -f {output_dir}/{output_prefix}.count_report.Rmd"))
+  system(glue::glue(
+    "rm -f {output_dir}/{output_prefix}.mageck_count.log"))
 
   count_results <- list()
   count_results[['counts']] <- data.frame()
@@ -300,11 +303,18 @@ count_sgRNA_guidecounter <- function(
   }
 
   T0_label <-
-    sample_data[sample_data$T0 == 1,]$sample_label
+    unique(sample_data[sample_data$T0 == 1,]$sample_label)
   fastq_files <-
     paste(sample_data$fastq, collapse=" ")
   sample_labels <-
     paste(sample_data$sample_label, collapse=",")
+  sample_labels <- sample_data$sample_label
+  if("replicate" %in% colnames(sample_data)){
+    sample_labels <- paste(
+      sample_labels, sample_data$replicate, sep="_")
+  }
+  sample_data$sample_label2 <- sample_labels
+
   timepoints <- as.character(
     glue::glue('T{unique(sample_data$time_point)}'))
   treatments <- unique(sample_data$condition)
@@ -315,9 +325,9 @@ count_sgRNA_guidecounter <- function(
   }
 
   fastq_dict <- list()
-  for(s in sample_data$sample_label){
+  for(s in sample_data$sample_label2){
     fastq_dict[[s]] <-
-      sample_data[sample_data$sample_label == s,]$fastq
+      sample_data[sample_data$sample_label2 == s,]$fastq
   }
 
   assertthat::assert_that(
@@ -385,19 +395,20 @@ count_sgRNA_guidecounter <- function(
     )
     if(file.exists(sgRNA_libfile_csv)){
 
-      commands[['T0']] <-
-        glue::glue(
-          "{guide_counter_command_basic}",
-          " --input {fastq_dict[['T0']]}",
-          " --library {sgRNA_libfile_csv}",
-          " --output {output_dir}/{output_prefix}_{rand_str}_T0_{i}",
-          " > /dev/null 2>&1"
-        )
-      system(commands[['T0']])
+      # commands[['T0']] <-
+      #   glue::glue(
+      #     "{guide_counter_command_basic}",
+      #     " --input {fastq_dict[['T0']]}",
+      #     " --library {sgRNA_libfile_csv}",
+      #     " --output {output_dir}/{output_prefix}_{rand_str}_T0_{i}",
+      #     " > /dev/null 2>&1"
+      #   )
+      # system(commands[['T0']])
 
-      for(ti in setdiff(timepoints,"T0")){
-        for(tr in treatments){
-          label <- paste0(ti,'_',tr)
+      for(label in sample_labels){
+      #for(ti in setdiff(timepoints,"T0")){
+      #  for(tr in treatments){
+          #label <- paste0(ti,'_',tr)
           if(!label %in% names(fastq_dict)){
             next
           }
@@ -408,7 +419,7 @@ count_sgRNA_guidecounter <- function(
             " --output {output_dir}/{output_prefix}_{rand_str}_{label}_{i}",
             " > /dev/null 2>&1")
           system(cmd)
-        }
+        #}
       }
     } else {
       message(glue::glue("sgRNA library file not found at: {sgRNA_libfile_csv}"))
@@ -422,18 +433,19 @@ count_sgRNA_guidecounter <- function(
   counts_all_samples <- data.frame()
   t0_seen <- FALSE
 
-  for(ti in timepoints){
+  for(label in sample_labels){
+  #for(ti in timepoints){
     ## don't do T0 two times
-    for(tr in treatments){
-      label <- glue::glue("{ti}_{tr}")
-      if(ti == 'T0'){
-        label <- 'T0'
-      }
+    #for(tr in treatments){
+      #label <- glue::glue("{ti}_{tr}")
+      #if(ti == 'T0'){
+      #  label <- 'T0'
+      #}
 
-      if(ti == 'T0' & t0_seen){
-        next
-      }
-      t0_seen <- TRUE
+      #if(ti == 'T0' & t0_seen){
+      #  next
+      #}
+      #t0_seen <- TRUE
 
       stats <- data.frame()
       counts <- data.frame()
@@ -507,11 +519,12 @@ count_sgRNA_guidecounter <- function(
           dplyr::distinct()
       }
 
-    }
+    #}
   }
 
   gini_indices <- data.frame()
-  for(label in sample_data$sample_label){
+  for(label in sample_labels)
+  #for(label in sample_data$sample_label){
     if(label %in% colnames(counts_all_samples)){
       gini_index <- data.frame(
         Label = label,
@@ -522,7 +535,7 @@ count_sgRNA_guidecounter <- function(
       )
       gini_indices <- dplyr::bind_rows(
         gini_indices, gini_index)
-    }
+    #}
   }
 
   stats_all_samples <-
@@ -554,6 +567,262 @@ count_sgRNA_guidecounter <- function(
   return(count_results)
 }
 
+
+#' Count sgRNA from FASTQ files using guide-counter (alternative version)
+#'
+#' This function counts sgRNA sequences from FASTQ files using the
+#' guide-counter tool. It requires the path to the guide-counter binary,
+#' the directory containing the FASTQ files, and other parameters for counting.
+#'
+#' @param fname_fastq A character string specifying the path to the FASTQ file to be counted.
+#' @param sample_label A character string specifying the label for the sample being counted.
+#' @param sgRNA_library A character string specifying the sgRNA library to use. Must
+#' be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO'. Default is "DTKP".
+#' @param min_sgRNA_length An integer specifying the minimum sgRNA length to consider.
+#' Default is 17.
+#' @param max_sgRNA_length An integer specifying the maximum sgRNA length to
+#' consider (default is 25).
+#' @param guide_counter_bin A character string specifying the path to the
+#' guide-counter binary.
+#' @param count_exact A logical indicating whether to use exact matching in
+#' guide-counter (default is TRUE).
+#' @param offset_sample_size An integer specifying the number of reads to be
+#' examined for offset estimation (default is 100K).
+#' @param offset_min_fraction A numeric value specifying the minimum fraction
+#' of reads supporting an offset to consider it valid (default is 0.0025).
+#' @param output_dir A character string specifying the directory where the
+#' count results will be saved.
+#' @param output_prefix A character string to prefix output files. Default is "FGFR4".
+#' @param overwrite A logical indicating whether to overwrite existing
+#' output files (default is FALSE).
+#'
+#' @return A list containing two data frames: 'stats' with summary
+#' statistics and 'counts' with sgRNA counts.
+#'
+#' @export
+#'
+count_sgRNA_guidecounter_fastq <- function(
+    fname_fastq = NULL,
+    sample_label = NULL,
+    sgRNA_library = "DTKP",
+    min_sgRNA_length = 17,
+    max_sgRNA_length = 25,
+    guide_counter_bin =
+      "/Users/sigven/miniconda3/bin/guide-counter",
+    count_exact = TRUE,
+    offset_sample_size = "100000",
+    offset_min_fraction = 0.0025,
+    output_dir = NULL,
+    overwrite = FALSE){
+
+  assertthat::assert_that(
+    !is.null(output_dir),
+    msg = "Please provide output_dir"
+  )
+  assertthat::assert_that(
+    dir.exists(output_dir),
+    msg = glue::glue("output_dir not found at: '{output_dir}'")
+  )
+
+  if(overwrite == FALSE &
+     file.exists(
+       file.path(
+         output_dir,
+         glue::glue("{sample_label}.count.txt"))) &
+     file.exists(
+       file.path(
+         output_dir,
+         glue::glue("{sample_label}.countsummary.txt")))){
+    message("Count file and summary file already exist - returning existing count data")
+    count_results <- list()
+    count_results[['counts']] <- data.frame()
+    count_results[['stats']] <- data.frame()
+
+    counts <- as.data.frame(readr::read_tsv(
+      file.path(
+        output_dir,
+        glue::glue("{sample_label}.count.txt")),
+      show_col_types = F))
+    stats <- as.data.frame(readr::read_tsv(
+      file.path(
+        output_dir,
+        glue::glue("{sample_label}.countsummary.txt")),
+      show_col_types = F))
+    count_results <- list()
+    count_results$stats <- stats
+    count_results$counts <- counts
+    return(count_results)
+
+  }
+
+  if(is.null(fname_fastq) | !file.exists(fname_fastq)){
+    stop("Please provide path to FASTQ file")
+  }
+  if(is.null(sample_label)){
+    stop("Please provide sample_label for this FASTQ file")
+  }
+  assertthat::assert_that(
+    !is.null(guide_counter_bin),
+    msg = "Please provide path to guide_counter binary"
+
+  )
+
+  if(!sgRNA_library %in% c('ACOC','DTKP','GEEX','MEPR',
+                           'PROT','TMMO')){
+    msg = paste0(
+      "sgRNA_library must be one of ",
+      "'ACOC','DTKP','GEEX','MEPR',",
+      "'PROT','TMMO'")
+  }
+
+  guide_counter_command_basic <-
+    glue::glue(
+      "{guide_counter_bin} count --control-pattern _CTRL ",
+      "--offset-min-fraction {offset_min_fraction} ",
+      "--offset-sample-size {offset_sample_size} "
+    )
+  if(count_exact){
+    guide_counter_command_basic <-
+      glue::glue(
+        "{guide_counter_command_basic} --exact-match "
+      )
+  }
+
+  # for reproducibility
+  set.seed(12345)
+
+  # Pool of characters: uppercase, lowercase, digits
+  chars <- c(letters, LETTERS, 0:9)
+
+  # Sample 9 characters and collapse into one string
+  rand_str <- paste0(sample(chars, 9, replace = TRUE), collapse = "")
+  message(glue::glue("Random string for output files: {rand_str}"))
+
+  ## Construct commands for each timepoint and treatment
+  ## Iterate over all sgRNA lengths in library (from 17 to 25)
+  commands <- list()
+  i <- min_sgRNA_length
+  while(i <= max_sgRNA_length){
+    ## sgRNA library file for this length
+    sgRNA_libfile_csv <- file.path(
+      system.file(
+        "extdata", "sgRNA_library", package = "crisprFlow"),
+      sgRNA_library,
+      glue::glue("sgRNA_library_{sgRNA_library}_{i}.csv")
+    )
+    if(file.exists(sgRNA_libfile_csv)){
+      cmd = glue::glue(
+        "{guide_counter_command_basic}",
+        " --input {fname_fastq}",
+        " --library {sgRNA_libfile_csv}",
+        " --output {output_dir}/{sample_label}_{rand_str}_{i}",
+        " > /dev/null 2>&1")
+      system(cmd)
+    } else {
+      message(
+        glue::glue("sgRNA library file not found at: {sgRNA_libfile_csv}"))
+    }
+    i <- i + 1
+  }
+
+
+  stats <- data.frame()
+  counts <- data.frame()
+  i <- min_sgRNA_length
+  while(i <= max_sgRNA_length){
+    count_file_i <-
+      glue::glue(
+        "{output_dir}/{sample_label}_{rand_str}_{i}.counts.txt")
+    if(file.exists(count_file_i)){
+      counts_i <- readr::read_tsv(
+        count_file_i, show_col_types = F) |>
+        as.data.frame()
+      if(NROW(counts_i) > 0){
+        colnames(counts_i) <- c('sgRNA','Gene',sample_label)
+        counts <- counts |>
+          dplyr::bind_rows(counts_i)
+
+        stats_file_i <-
+          glue::glue(
+            "{output_dir}/{sample_label}_{rand_str}_{i}.stats.txt")
+        stats_i <- readr::read_tsv(
+          stats_file_i, show_col_types = F)
+        stats_i$label <- sample_label
+        stats <- stats |>
+          dplyr::bind_rows(stats_i)
+      }
+    }
+
+    i <- i + 1
+  }
+
+  stats_summarised <- as.data.frame(
+    stats |>
+      dplyr::select(
+        -dplyr::any_of(
+          c("mean_reads_per_guide",
+            "mean_reads_essential",
+            "mean_reads_nonessential",
+            "mean_reads_control",
+            "mean_reads_other")
+        )
+      ) |>
+      dplyr::rename(
+        File = file,
+        Label = label,
+        Reads = total_reads,
+      ) |>
+      dplyr::group_by(
+        .data$File,
+        .data$Label,
+        .data$Reads
+      ) |>
+      dplyr::reframe(
+        Mapped = sum(.data$mapped_reads),
+        Percentage = round(
+          sum(.data$mapped_reads) / .data$Reads, digits=4),
+        TotalsgRNAs = sum(.data$total_guides),
+        Zerocounts = sum(.data$zero_read_guides)
+      ) |>
+      dplyr::distinct())
+
+  gini_index <- data.frame(
+    Label = sample_label,
+    GiniIndex = crisprFlow::gini_index2(
+      x = counts[[sample_label]],
+      log_transform = TRUE,
+      na.rm = TRUE)
+  )
+
+  stats_summarised <- stats_summarised |>
+    dplyr::left_join(
+      gini_index, by = c("Label")) |>
+    dplyr::distinct()
+
+
+
+  readr::write_tsv(
+    as.data.frame(stats_summarised),
+    file = file.path(
+      output_dir,
+      glue::glue("{sample_label}.countsummary.txt")),
+    col_names = TRUE, quote = "none")
+
+  readr::write_tsv(
+    as.data.frame(counts),
+    file = file.path(
+      output_dir,
+      glue::glue("{sample_label}.count.txt")),
+    col_names = TRUE, quote = "none")
+
+  system(glue::glue("rm -f {output_dir}/{sample_label}_{rand_str}*.txt"))
+  message("Counting completed.")
+
+  count_results <- list()
+  count_results$stats <- as.data.frame(stats_summarised)
+  count_results$counts <- as.data.frame(counts)
+  return(count_results)
+}
 
 
 #' Check for expected FASTQ files in a directory

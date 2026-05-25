@@ -36,7 +36,8 @@ DMSO")}
 \item{plot_fontsize}{Font size for the plot text elements (default is 11}
 }
 \value{
-A list of ggplot2 objects representing the sgRNA count distribution histograms
+A list of ggplot2 objects representing the sgRNA count
+distribution histograms
 }
 \description{
 This function generates histograms of sgRNA count distributions

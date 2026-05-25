@@ -3,6 +3,7 @@
 export(check_fastq_files)
 export(clean_treatment_timepoint_label)
 export(count_sgRNA_guidecounter)
+export(count_sgRNA_guidecounter_fastq)
 export(count_sgRNA_mageck)
 export(detect_hits_drugz)
 export(detect_hits_fpa)

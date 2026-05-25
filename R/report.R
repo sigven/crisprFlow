@@ -5,10 +5,17 @@
 #' and arranges the data frame by timepoint
 #'
 #' @param df A data frame containing a 'label' column with treatment and timepoint information
+#' @param timecourse_drug_screen Logical indicating whether
+#' the data is from a timecourse drug screen (default is TRUE)
 #'
 #' @export
 clean_treatment_timepoint_label <- function(
-    df = NULL){
+    df = NULL,
+    timecourse_drug_screen = TRUE){
+
+  if(timecourse_drug_screen == FALSE){
+    return(df)
+  }
 
   if("label" %in% colnames(df)){
 
@@ -155,11 +162,22 @@ read_sgRNA_counts2 <- function(
 #'
 #' @param sgRNA_count_summary_file The path to the MAGeCK/guide-counter count
 #' summary file
+#' @param timecourse_drug_screen logical indicating whether the data is from a timecourse drug screen (default is TRUE)
 #' @return A data frame containing cleaned sgRNA summary statistics
 #' @export
 #'
 read_sgRNA_summary <- function(
-    sgRNA_count_summary_file){
+    sgRNA_count_summary_file = NULL,
+    timecourse_drug_screen = TRUE){
+
+  assertthat::assert_that(
+    !is.null(sgRNA_count_summary_file),
+    msg = "sgRNA_count_summary_file parameter must be provided"
+  )
+  assertthat::assert_that(
+    file.exists(sgRNA_count_summary_file),
+    msg = "sgRNA_count_summary_file does not exist at the specified path"
+  )
 
   sgRNA_count_summary <- as.data.frame(
     readr::read_tsv(
@@ -168,7 +186,9 @@ read_sgRNA_summary <- function(
     janitor::clean_names() |>
     dplyr::rename(total_reads = reads,
                   total_sgrnas = totalsg_rn_as) |>
-    crisprFlow::clean_treatment_timepoint_label()
+    crisprFlow::clean_treatment_timepoint_label(
+      timecourse_drug_screen = timecourse_drug_screen
+    )
 
   return(sgRNA_count_summary)
 
@@ -639,7 +659,9 @@ plot_sgRNA_gini_index <- function(
 
   p <- ggplot2::ggplot(
     data = sgRNA_summary,
-    ggplot2::aes(x = timepoint, y = gini_index, fill = treatment)) +
+    ggplot2::aes(x = timepoint,
+                 y = gini_index,
+                 fill = treatment)) +
     ggplot2::geom_bar(
       stat = "identity",
       position = ggplot2::position_dodge2()) +

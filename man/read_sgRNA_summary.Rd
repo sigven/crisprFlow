@@ -4,11 +4,16 @@
 \alias{read_sgRNA_summary}
 \title{Read sgRNA summary statistics from a MAGeCK/guide-counter summary file}
 \usage{
-read_sgRNA_summary(sgRNA_count_summary_file)
+read_sgRNA_summary(
+  sgRNA_count_summary_file = NULL,
+  timecourse_drug_screen = TRUE
+)
 }
 \arguments{
 \item{sgRNA_count_summary_file}{The path to the MAGeCK/guide-counter count
 summary file}
+
+\item{timecourse_drug_screen}{logical indicating whether the data is from a timecourse drug screen (default is TRUE)}
 }
 \value{
 A data frame containing cleaned sgRNA summary statistics

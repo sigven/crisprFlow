@@ -7,10 +7,13 @@ This function separates the 'label' column into 'treatment' and 'timepoint'
 columns, removes any existing 'treatment' and 'timepoint' columns,
 and arranges the data frame by timepoint}
 \usage{
-clean_treatment_timepoint_label(df = NULL)
+clean_treatment_timepoint_label(df = NULL, timecourse_drug_screen = TRUE)
 }
 \arguments{
 \item{df}{A data frame containing a 'label' column with treatment and timepoint information}
+
+\item{timecourse_drug_screen}{Logical indicating whether
+the data is from a timecourse drug screen (default is TRUE)}
 }
 \description{
 Function to clean treatment and timepoint labels from a data frame
