@@ -9,8 +9,10 @@
 #' @param count_table_txt Path to the count table text file (from MAGeCK
 #' count or guidecounter)
 #' @param output_dir Directory where output files will be saved
-#' @param norm_method Normalization method to use ("median", "total", or "
-#' control")
+#' @param norm_method Normalization method to use ("median", "total",
+#' "control" or "none"; default is "median"). With "control", counts are
+#' normalized to the control genes in the count table (genes matching
+#' \code{control_pattern})
 #' @param mageck_bin Path to the MAGeCK binary
 #' @param threads Number of threads to use (default is 1)
 #' @param permutation_round Number of permutation rounds (default is 2, recommended 10 (longer time))
@@ -18,7 +20,7 @@
 #' 10)
 #' @param adjust_method Method for p-value adjustment (default is "fdr")
 #' @param output_prefix Prefix for output files (default is "crisprFlowRun")
-#' @param control_pattern Pattern to identify control genes (default is "TARGETING_NEG_CTRL")
+#' @param control_pattern Pattern to identify control genes (default is "NEG_CTRL")
 #' @return A data frame containing the gene summary results from MAGeCK MLE
 #'
 #' @export
@@ -27,18 +29,16 @@ detect_hits_mageck_mle <- function(
     samplesheet_csv = NULL,
     count_table_txt = NULL,
     output_dir = NULL,
-    norm_method = c("median", "total", "control"),
+    norm_method = c("median", "total", "control", "none"),
     mageck_bin = "/Users/sigven/miniconda3/bin/mageck",
     threads = 1,
     permutation_round = 4,
     late_time_start = 10,
     adjust_method = "fdr",
     output_prefix = "mageck_mle_hits",
-    control_pattern = "TARGETING_NEG_CTRL"){
+    control_pattern = "NEG_CTRL"){
 
-  assertthat::assert_that(
-    norm_method %in% c("median","none","total")
-  )
+  norm_method <- match.arg(norm_method)
   assertthat::assert_that(
     !is.null(mageck_bin),
     msg = "Please provide path to mageck binary"
@@ -69,10 +69,27 @@ detect_hits_mageck_mle <- function(
     msg = glue::glue("output_dir not found at: '{output_dir}'")
   )
 
-  control_genes_fname <-
-    file.path(system.file(
-      'extdata', 'control_genes',
-      package='crisprFlow'), 'control_genes.txt')
+  ## Control genes (for --control-gene) are taken from the count table,
+  ## so that they match the sgRNA library used for counting
+  control_genes_fname <- NULL
+  if(norm_method == "control"){
+    control_genes <- readr::read_tsv(
+      count_table_txt, show_col_types = F) |>
+      dplyr::filter(
+        stringr::str_detect(.data$Gene, pattern = control_pattern)) |>
+      dplyr::pull(.data$Gene) |>
+      unique() |>
+      sort()
+    assertthat::assert_that(
+      length(control_genes) > 0,
+      msg = glue::glue(
+        "No control genes matching '{control_pattern}' found in ",
+        "count table - cannot use norm_method = 'control'")
+    )
+    control_genes_fname <- file.path(
+      output_dir, paste0(output_prefix, "_control_genes.txt"))
+    writeLines(control_genes, control_genes_fname)
+  }
   design_matrix_fname <- file.path(
     output_dir, paste0(output_prefix, "_design_matrix.txt"))
 
@@ -116,7 +133,7 @@ detect_hits_mageck_mle <- function(
     "-n",glue::glue("{file.path(output_dir, output_prefix)}")
   )
 
-  if(!is.null(control_genes_fname) & norm_method == "control"){
+  if(!is.null(control_genes_fname)){
     args <- c(args, "--control-gene",glue::glue("{control_genes_fname}"))
   }
 
@@ -190,7 +207,7 @@ detect_hits_mageck_mle <- function(
 #' @param fpa_iterations Number of iterations for the analysis (default is 10000)
 #' @param output_dir Directory where output files will be saved
 #' @param output_prefix Prefix for output files (default is "crisprFlowRun")
-#' @param control_pattern Pattern to identify control genes (default is "TARGETING_NEG_CTRL")
+#' @param control_pattern Pattern to identify control genes (default is "NEG_CTRL")
 #' @return A list containing the FPA analysis results
 #'
 #' @export
@@ -207,7 +224,7 @@ detect_hits_fpa <- function(
     fpa_statistics_method = "Density",
     fpa_statistic = "Sum",
     fpa_iterations = 10000,
-    control_pattern = "TARGETING_NEG_CTRL"){
+    control_pattern = "NEG_CTRL"){
 
   if(file.exists(
     file.path(output_dir, glue::glue("{output_prefix}.rds")))){
@@ -514,7 +531,7 @@ estimate_fold_change <- function(
     output_dir = NULL,
     output_prefix = "crisprFlow",
     overwrite = FALSE,
-    control_pattern = "TARGETING_NEG_CTRL") {
+    control_pattern = "NEG_CTRL") {
 
   replicate_method <- match.arg(replicate_method)
 

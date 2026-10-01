@@ -24,7 +24,7 @@ count_sgRNA_guidecounter_fastq(
 \item{sample_label}{A character string specifying the label for the sample being counted.}
 
 \item{sgRNA_library}{A character string specifying the sgRNA library to use. Must
-be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO'. Default is "DTKP".}
+be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO','CHIP1'. Default is "DTKP".}
 
 \item{min_sgRNA_length}{An integer specifying the minimum sgRNA length to consider.
 Default is 17.}

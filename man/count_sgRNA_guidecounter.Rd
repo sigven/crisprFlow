@@ -22,7 +22,7 @@ count_sgRNA_guidecounter(
 \item{samplesheet_csv}{A character string specifying the path to a CSV file}
 
 \item{sgRNA_library}{A character string specifying the sgRNA library to use.
-Must be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO'. Default is "DTKP".}
+Must be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO','CHIP1'. Default is "DTKP".}
 
 \item{min_sgRNA_length}{An integer specifying the minimum sgRNA length to consider.
 Default is 17.}

@@ -20,7 +20,7 @@ count_sgRNA_mageck(
 containing sample information with mandatory columns: fastq, sample_label, condition.}
 
 \item{sgRNA_library}{A character string specifying the sgRNA library to use.
-Must be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO'. Default is "DTKP".}
+Must be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO','CHIP1'. Default is "DTKP".}
 
 \item{mageck_bin}{A character string specifying the path
 to the MAGECK binary.}

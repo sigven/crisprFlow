@@ -84,7 +84,7 @@ read_sgRNA_counts <- function(
       file = sgRNA_count_file,
       show_col_types = F) |>
       dplyr::filter(
-        !stringr::str_detect(Gene, "TARGETING")) |>
+        !stringr::str_detect(Gene, "NEG_CTRL")) |>
       dplyr::select(-c("Gene")))
 
   rownames(sgRNA_count_data) <- sgRNA_count_data$sgRNA

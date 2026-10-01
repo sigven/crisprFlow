@@ -8,7 +8,7 @@
 #' @param samplesheet_csv A character string specifying the path to a CSV file
 #' containing sample information with mandatory columns: fastq, sample_label, condition.
 #' @param sgRNA_library A character string specifying the sgRNA library to use.
-#' Must be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO'. Default is "DTKP".
+#' Must be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO','CHIP1'. Default is "DTKP".
 #' @param mageck_bin A character string specifying the path
 #' to the MAGECK binary.
 #' @param norm_method Method for normalization ('none','median','total')
@@ -73,13 +73,7 @@ count_sgRNA_mageck <- function(
   assertthat::assert_that(
     is.character(sgRNA_library)
   )
-  if(!sgRNA_library %in% c('ACOC','DTKP','GEEX','MEPR',
-                           'PROT','TMMO')){
-    msg = paste0(
-      "sgRNA_library must be one of ",
-      "'ACOC','DTKP','GEEX','MEPR',",
-      "'PROT','TMMO'")
-  }
+  check_sgRNA_library(sgRNA_library)
   assertthat::assert_that(
     norm_method %in% c("median","none","total")
   )
@@ -210,7 +204,7 @@ count_sgRNA_mageck <- function(
 #'
 #' @param samplesheet_csv A character string specifying the path to a CSV file
 #' @param sgRNA_library A character string specifying the sgRNA library to use.
-#' Must be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO'. Default is "DTKP".
+#' Must be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO','CHIP1'. Default is "DTKP".
 #' @param min_sgRNA_length An integer specifying the minimum sgRNA length to consider.
 #' Default is 17.
 #' @param max_sgRNA_length An integer specifying the maximum sgRNA length to consider
@@ -346,13 +340,7 @@ count_sgRNA_guidecounter <- function(
 
   )
 
-  if(!sgRNA_library %in% c('ACOC','DTKP','GEEX','MEPR',
-                           'PROT','TMMO')){
-    msg = paste0(
-      "sgRNA_library must be one of ",
-      "'ACOC','DTKP','GEEX','MEPR',",
-      "'PROT','TMMO'")
-  }
+  check_sgRNA_library(sgRNA_library)
 
   if(!"T0" %in% timepoints){
     msg = "T0 must be included in timepoint vector"
@@ -577,7 +565,7 @@ count_sgRNA_guidecounter <- function(
 #' @param fname_fastq A character string specifying the path to the FASTQ file to be counted.
 #' @param sample_label A character string specifying the label for the sample being counted.
 #' @param sgRNA_library A character string specifying the sgRNA library to use. Must
-#' be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO'. Default is "DTKP".
+#' be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO','CHIP1'. Default is "DTKP".
 #' @param min_sgRNA_length An integer specifying the minimum sgRNA length to consider.
 #' Default is 17.
 #' @param max_sgRNA_length An integer specifying the maximum sgRNA length to
@@ -667,13 +655,7 @@ count_sgRNA_guidecounter_fastq <- function(
 
   )
 
-  if(!sgRNA_library %in% c('ACOC','DTKP','GEEX','MEPR',
-                           'PROT','TMMO')){
-    msg = paste0(
-      "sgRNA_library must be one of ",
-      "'ACOC','DTKP','GEEX','MEPR',",
-      "'PROT','TMMO'")
-  }
+  check_sgRNA_library(sgRNA_library)
 
   guide_counter_command_basic <-
     glue::glue(
@@ -992,4 +974,22 @@ gini_index2 <- function(
   gini_index <- round(gini_index, digits = digits)
   return(as.numeric(gini_index))
 
+}
+
+#' Check that an sgRNA library name is supported
+#'
+#' @param sgRNA_library A character string specifying the sgRNA library
+#'
+#' @keywords internal
+#'
+check_sgRNA_library <- function(sgRNA_library){
+  sgRNA_libraries <- c('ACOC','DTKP','GEEX','MEPR',
+                       'PROT','TMMO','CHIP1')
+  assertthat::assert_that(
+    assertthat::is.string(sgRNA_library),
+    sgRNA_library %in% sgRNA_libraries,
+    msg = paste0(
+      "sgRNA_library must be one of ",
+      paste0("'", sgRNA_libraries, "'", collapse = ","))
+  )
 }
