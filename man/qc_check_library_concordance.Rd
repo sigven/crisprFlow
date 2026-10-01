@@ -29,6 +29,7 @@ mismatch (e.g. counts generated against a different library) invalidates
 every downstream step, so this is worth running first.
 }
 \examples{
+## Not concordant: the example data use only a subset of CHIP1
 qc_check_library_concordance(exampleCounts, qc_read_library("CHIP1"))
 
 }

@@ -37,4 +37,8 @@ Imports:
     tidyr
 Depends: 
     R (>= 4.1.0)
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
 Config/roxygen2/version: 8.1.0

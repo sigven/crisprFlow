@@ -371,6 +371,7 @@ qc_read_library <- function(sgRNA_library = NULL, library_file = NULL) {
 #' @export
 #'
 #' @examples
+#' ## Not concordant: the example data use only a subset of CHIP1
 #' qc_check_library_concordance(exampleCounts, qc_read_library("CHIP1"))
 #'
 qc_check_library_concordance <- function(counts, library,
@@ -487,6 +488,9 @@ qc_plot_read_mapping <- function(summary_df, meta, colour_by = "group",
   qc_check_meta(meta)
   .check_meta_column(meta, colour_by, "colour_by")
   .check_meta_column(meta, facet_by, "facet_by")
+  fill_values <- c(.qc_colours(meta[[colour_by]], colours),
+                   "Unmapped reads" = "#CCCCCC")
+
   df <- summary_df |>
     dplyr::select(dplyr::all_of(c("sample_id", "total_reads", "mapped"))) |>
     .join_meta(meta) |>
@@ -506,15 +510,16 @@ qc_plot_read_mapping <- function(summary_df, meta, colour_by = "group",
         dplyr::if_else(.data$status == "mapped", "Mapped", "Unmapped"),
         " reads: ", scales::comma(.data$reads),
         "<br>% mapped: ", scales::percent(.data$pct_mapped, 0.1)),
-      label = factor(.data$label, levels = rev(meta$label))
+      label = factor(.data$label, levels = rev(meta$label)),
+      ## mapped reads first (left), unmapped last, in every bar
+      fill_key = factor(.data$fill_key, levels = names(fill_values)),
+      status = factor(.data$status, levels = c("unmapped", "mapped"))
     )
-
-  fill_values <- c(.qc_colours(meta[[colour_by]], colours),
-                   "Unmapped reads" = "#CCCCCC")
 
   p <- ggplot2::ggplot(
     df, ggplot2::aes(y = .data$label, x = .data$reads / 1e6,
-                     fill = .data$fill_key, text = .data$tooltip)) +
+                     fill = .data$fill_key, group = .data$status,
+                     text = .data$tooltip)) +
     ggplot2::geom_col() +
     ggplot2::geom_text(
       data = dplyr::filter(df, .data$status == "mapped"),
@@ -739,8 +744,15 @@ qc_plot_replicate_correlation <- function(counts, meta,
       panel.grid = ggplot2::element_blank(),
       legend.position = "right")
   if (show_values) {
+    ## white text on the darker tiles
+    d$text_colour <- dplyr::if_else(
+      d$r > mean(limits), "white", "black")
     p <- p + ggplot2::geom_text(
-      ggplot2::aes(label = sprintf("%.2f", .data$r)), size = 2.2)
+      data = d,
+      ggplot2::aes(label = sprintf("%.2f", .data$r),
+                   colour = .data$text_colour),
+      size = 2.2, show.legend = FALSE) +
+      ggplot2::scale_colour_identity()
   }
 
   if (interactive) .to_plotly(p) else p
@@ -974,7 +986,7 @@ qc_plot_guide_detection <- function(rep_data, base_size = 12) {
       name = NULL) +
     ggplot2::scale_y_continuous(labels = scales::comma) +
     ggplot2::labs(x = NULL, y = "Number of targeting sgRNAs",
-                  subtitle = paste0("Detected = mean ≥ ",
+                  subtitle = paste0("Detected = mean >= ",
                                     rep_data$threshold,
                                     " reads per sample in stage")) +
     .theme_qc(base_size) +

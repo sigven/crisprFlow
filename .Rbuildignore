@@ -7,3 +7,5 @@ data-raw
 ^pkgdown$
 ^\.positai$
 ^\.claude$
+^doc$
+^Meta$
