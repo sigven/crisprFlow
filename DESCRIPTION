@@ -1,7 +1,7 @@
 Package: crisprFlow
 Type: Package
 Title: Functions to analyze and visualize CRISPR perturbation data
-Version: 0.1.0
+Version: 0.2.0
 Authors@R:
     c(person(given = "Sigve",
              family = "Nakken",
@@ -23,11 +23,18 @@ Imports:
     caret,
     dplyr,
     ggplot2,
+    ggrepel,
     ggsci,
     glue,
     janitor,
+    plotly,
+    purrr,
     readr,
-    stringr
+    rlang,
+    scales,
+    stringr,
+    tibble,
+    tidyr
 Depends: 
-    R (>= 3.5)
+    R (>= 4.1.0)
 Config/roxygen2/version: 8.1.0
