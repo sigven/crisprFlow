@@ -12,7 +12,7 @@ of results. Importantly, the tool provides a reporting framework to ensure
 reproducibility and transparency of the analysis workflow.
 
 Currently, the package requires installation of external tools (non R-based) 
-that are not automatically installed (*MAGeCK*, *guidecounter*). A containerized
+that are not automatically installed (*MAGeCK*, *guide-counter*). A containerized
 version of the package is under development to ease the installation process.
 
 

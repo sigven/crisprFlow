@@ -90,17 +90,17 @@ NULL
         size = base_size, face = "bold", family = .qc_font()),
       strip.background = ggplot2::element_rect(
         fill = "grey95", colour = "grey80"),
-      legend.position = "bottom",
+      legend.position = "right",
       panel.spacing = ggplot2::unit(0.8, "lines")
     )
 }
 
-## Wrap a ggplot in plotly, with a horizontal legend below the plot
+## Wrap a ggplot in plotly, with a vertical legend to the right of the plot
 .to_plotly <- function(p, tooltip = "text") {
   plotly::ggplotly(p, tooltip = tooltip) |>
     plotly::layout(
       font = list(family = .qc_font()),
-      legend = list(orientation = "h", x = 0, y = -0.15)
+      legend = list(orientation = "v", x = 1.02, xanchor = "left", y = 0.5)
     )
 }
 
@@ -1082,4 +1082,194 @@ qc_plot_control_guides <- function(counts, meta, ctrl_pattern = "NEG_CTRL",
       legend.position = "right")
 
   if (interactive) .to_plotly(p) else p
+}
+
+#' sgRNA-level phenotype distribution with per-gene strip chart
+#'
+#' Produces a two-panel figure. The top panel shows the kernel density of
+#' \code{fc_col} log2 fold-changes for all real-gene sgRNAs (guide-counter
+#' exact counts). The bottom panel shows jittered dot strips for the top
+#' \code{n_promoters} and top \code{n_suppressors} hit genes ranked by
+#' Chronos \code{tvb_effect}, coloured by hit classification. Guide
+#' consistency across sgRNAs is the key QC signal: a robust hit should
+#' shift most or all of its guides in the same direction.
+#'
+#' @param sgrna_fc Data frame of per-sgRNA fold changes, as produced by
+#'   guide-counter. Must contain columns \code{sgRNA}, \code{Gene}, and the
+#'   column named by \code{fc_col}.
+#' @param hit_df Gene-level hit table. Must contain columns \code{Gene},
+#'   \code{ctrl_type} (\code{"Real gene"} for real genes),
+#'   \code{classification}, and \code{tvb_effect} (Top-vs-Bottom Chronos
+#'   effect).
+#' @param class_colours Named character vector mapping classification labels
+#'   to hex colours.
+#' @param fc_col Name of the fold-change column in \code{sgrna_fc} to plot
+#'   (default \code{"Top_vs_Bottom_log2FC"}).
+#' @param n_promoters Number of top invasion promoters to show (default 6).
+#' @param n_suppressors Number of top invasion suppressors to show (default 6).
+#' @param ctrl_pattern Regex matching control sgRNA gene names to exclude
+#'   from the density and strips (default \code{"NEG_CTRL|SAFE_TARGETING"}).
+#' @param restrict_genes Optional character vector of gene names to restrict
+#'   candidate hits to (e.g. genes confirmed by both Chronos and MAGeCK). When
+#'   \code{NULL} (default) all classified hit genes are eligible.
+#' @param x_limits Numeric vector of length 2 giving x-axis limits
+#'   (default \code{c(-4.5, 4.5)}).
+#' @param interactive Logical. \code{FALSE} (default) returns a combined
+#'   patchwork static figure (density + strips). \code{TRUE} returns a
+#'   plotly strip chart only (with hover tooltips showing sgRNA, gene, and LFC).
+#' @param base_size Base font size passed to \code{.theme_qc()} (default 11).
+#'
+#' @return A patchwork ggplot object (\code{interactive = FALSE}) or a plotly
+#'   object (\code{interactive = TRUE}).
+#' @export
+#'
+qc_plot_sgrna_phenotype_distribution <- function(
+  sgrna_fc,
+  hit_df,
+  class_colours,
+  fc_col          = "Top_vs_Bottom_log2FC",
+  n_promoters     = 6L,
+  n_suppressors   = 6L,
+  ctrl_pattern    = "NEG_CTRL|SAFE_TARGETING",
+  restrict_genes  = NULL,
+  x_limits        = c(-4.5, 4.5),
+  interactive     = FALSE,
+  base_size       = 11
+) {
+  real_sgrna <- sgrna_fc |>
+    dplyr::filter(!stringr::str_detect(.data$Gene, ctrl_pattern)) |>
+    dplyr::rename(lfc = dplyr::all_of(fc_col))
+
+  candidate_hits <- hit_df
+  if (!is.null(restrict_genes)) {
+    candidate_hits <- candidate_hits |>
+      dplyr::filter(.data$Gene %in% restrict_genes)
+  }
+
+  top_hits <- dplyr::bind_rows(
+    candidate_hits |>
+      dplyr::filter(.data$ctrl_type == "Real gene",
+                    .data$classification == "invasion_promoter") |>
+      dplyr::slice_max(.data$tvb_effect, n = n_promoters) |>
+      dplyr::select("Gene", "classification", "tvb_effect"),
+    candidate_hits |>
+      dplyr::filter(.data$ctrl_type == "Real gene",
+                    .data$classification %in%
+                      c("invasion_suppressor_confirmed",
+                        "invasion_suppressor_likely")) |>
+      dplyr::slice_min(.data$tvb_effect, n = n_suppressors) |>
+      dplyr::select("Gene", "classification", "tvb_effect")
+  )
+
+  ## ggplot y-axis runs bottom->top; build factor levels so the plot shows
+  ## strongest promoter at the top, strongest suppressor at the bottom.
+  gene_order <- c(
+    top_hits |> dplyr::filter(.data$tvb_effect < 0) |>
+      dplyr::arrange(.data$tvb_effect) |> dplyr::pull("Gene"),
+    top_hits |> dplyr::filter(.data$tvb_effect > 0) |>
+      dplyr::arrange(.data$tvb_effect) |> dplyr::pull("Gene")
+  )
+
+  strip_df <- real_sgrna |>
+    dplyr::filter(.data$Gene %in% top_hits$Gene) |>
+    dplyr::left_join(top_hits, by = "Gene") |>
+    dplyr::mutate(
+      Gene    = factor(.data$Gene, levels = gene_order),
+      tooltip = paste0(
+        "<b>", .data$Gene, "</b><br>",
+        "sgRNA: ", .data$sgRNA, "<br>",
+        "Top vs Bottom LFC: ", sprintf("%.3f", .data$lfc), "<br>",
+        "Gene-level Chronos effect: ", sprintf("%.3f", .data$tvb_effect)
+      )
+    )
+
+  cls_labels <- c(
+    invasion_promoter             = "Invasion promoter",
+    invasion_suppressor_confirmed = "Invasion suppressor (confirmed)",
+    invasion_suppressor_likely    = "Invasion suppressor (likely)"
+  )
+  used_cls <- intersect(names(cls_labels),
+                        unique(as.character(strip_df$classification)))
+
+  ## -- Density: all real-gene sgRNAs ------------------------------------------
+  p_dens <- ggplot2::ggplot(real_sgrna,
+                             ggplot2::aes(x = .data$lfc)) +
+    ggplot2::geom_density(fill = "#D0D0D0", colour = "#888888",
+                          alpha = 0.8, linewidth = 0.6, adjust = 1.0) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
+                        colour = "#555555", linewidth = 0.5) +
+    ggplot2::scale_x_continuous(limits = x_limits, expand = c(0, 0)) +
+    ggplot2::labs(
+      x        = NULL,
+      y        = "Density",
+      subtitle = paste0("All real-gene sgRNAs (n = ",
+                        scales::comma(nrow(real_sgrna)), ")")
+    ) +
+    .theme_qc(base_size) +
+    ggplot2::theme(
+      axis.text.x   = ggplot2::element_blank(),
+      axis.ticks.x  = ggplot2::element_blank(),
+      plot.subtitle = ggplot2::element_text(
+        size = base_size - 2, colour = "#666666", hjust = 0)
+    )
+
+  ## -- Strip chart: top hits --------------------------------------------------
+  p_strip <- ggplot2::ggplot(
+    strip_df,
+    ggplot2::aes(x = .data$lfc, y = .data$Gene,
+                 colour = .data$classification, text = .data$tooltip)
+  ) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
+                        colour = "#555555", linewidth = 0.5) +
+    ggplot2::geom_jitter(height = 0.18, size = 2.2, alpha = 0.85,
+                         seed = 42) +
+    ggplot2::scale_x_continuous(limits = x_limits, expand = c(0, 0)) +
+    ggplot2::scale_y_discrete(expand = ggplot2::expansion(add = 0.5)) +
+    ggplot2::scale_colour_manual(
+      values = class_colours[used_cls],
+      labels = cls_labels[used_cls],
+      name   = NULL
+    ) +
+    ggplot2::labs(
+      x = paste0("Top vs Bottom log2 fold change (", fc_col, ")"),
+      y = NULL
+    ) +
+    .theme_qc(base_size) +
+    ggplot2::theme(legend.position = "right")
+
+  if (interactive) {
+    ## Re-enable x-axis on density for plotly (shareX will hide the upper one)
+    p_dens_int <- p_dens +
+      ggplot2::theme(
+        axis.text.x  = ggplot2::element_text(),
+        axis.ticks.x = ggplot2::element_line()
+      )
+    py_dens  <- plotly::ggplotly(p_dens_int, tooltip = "none")
+    py_strip <- plotly::ggplotly(p_strip, tooltip = "text")
+
+    n_genes <- nrow(top_hits)
+    total_h <- 160 + n_genes * 42
+
+    plotly::subplot(
+      py_dens, py_strip,
+      nrows   = 2,
+      shareX  = TRUE,
+      heights = c(0.25, 0.75),
+      titleY  = TRUE,
+      margin  = 0.04
+    ) |>
+      plotly::layout(
+        height = total_h,
+        legend = list(
+          orientation = "v",
+          x = 1.02, xanchor = "left",
+          y = 0.5,  yanchor = "middle"
+        ),
+        margin = list(r = 200)
+      )
+  } else {
+    n_genes <- nrow(top_hits)
+    patchwork::wrap_plots(p_dens, p_strip, ncol = 1,
+                          heights = c(1.5, n_genes * 0.45 + 0.4))
+  }
 }

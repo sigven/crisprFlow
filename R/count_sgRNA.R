@@ -807,6 +807,182 @@ count_sgRNA_guidecounter_fastq <- function(
 }
 
 
+#' Count sgRNA from a single FASTQ file using MAGeCK
+#'
+#' This function counts sgRNA sequences from a single FASTQ file using
+#' the MAGeCK tool (\code{mageck count}). It is the MAGeCK counterpart of
+#' \code{count_sgRNA_guidecounter_fastq}, taking one FASTQ file and a sample
+#' label, and producing output files named by the sample label.
+#'
+#' @param fname_fastq A character string specifying the path to the FASTQ file to be counted.
+#' @param sample_label A character string specifying the label for the sample being counted.
+#' @param sgRNA_library A character string specifying the sgRNA library to use. Must
+#' be one of 'ACOC','DTKP','GEEX','MEPR','PROT','TMMO','CHIP1'. Default is "DTKP".
+#' @param mageck_bin A character string specifying the path to the MAGeCK binary.
+#' @param norm_method Method for normalization ('none','median','total')
+#' (default is "none"). Only affects MAGeCK's normalized count file, which is
+#' not retained - the returned counts are raw counts.
+#' @param count_N A logical indicating whether to count 'N' bases
+#' in sgRNA sequences (default is FALSE).
+#' @param output_dir A character string specifying the directory where the
+#' count results will be saved.
+#' @param overwrite A logical indicating whether to overwrite existing
+#' output files (default is FALSE).
+#'
+#' @return A list containing two data frames: 'stats' with summary
+#' statistics and 'counts' with sgRNA counts.
+#'
+#' @export
+#'
+count_sgRNA_mageck_fastq <- function(
+    fname_fastq = NULL,
+    sample_label = NULL,
+    sgRNA_library = "DTKP",
+    mageck_bin = "/Users/sigven/miniconda3/bin/mageck",
+    norm_method = "none",
+    count_N = FALSE,
+    output_dir = NULL,
+    overwrite = FALSE){
+
+  assertthat::assert_that(
+    !is.null(output_dir),
+    msg = "Please provide output_dir"
+  )
+  assertthat::assert_that(
+    dir.exists(output_dir),
+    msg = glue::glue("output_dir not found at: '{output_dir}'")
+  )
+  if(is.null(sample_label)){
+    stop("Please provide sample_label for this FASTQ file")
+  }
+
+  if(overwrite == FALSE &
+     file.exists(
+       file.path(
+         output_dir,
+         glue::glue("{sample_label}.count.txt"))) &
+     file.exists(
+       file.path(
+         output_dir,
+         glue::glue("{sample_label}.countsummary.txt")))){
+    message("Count file and summary file already exist - returning existing count data")
+    counts <- as.data.frame(readr::read_tsv(
+      file.path(
+        output_dir,
+        glue::glue("{sample_label}.count.txt")),
+      show_col_types = F))
+    stats <- as.data.frame(readr::read_tsv(
+      file.path(
+        output_dir,
+        glue::glue("{sample_label}.countsummary.txt")),
+      show_col_types = F))
+    count_results <- list()
+    count_results$stats <- stats
+    count_results$counts <- counts
+    return(count_results)
+
+  }
+
+  if(is.null(fname_fastq) || !file.exists(fname_fastq)){
+    stop("Please provide path to FASTQ file")
+  }
+  assertthat::assert_that(
+    !is.null(mageck_bin),
+    msg = "Please provide path to mageck binary"
+  )
+  assertthat::assert_that(
+    file.exists(mageck_bin),
+    msg = glue::glue("mageck binary not found at: ", mageck_bin)
+  )
+  assertthat::assert_that(
+    norm_method %in% c("median","none","total")
+  )
+
+  check_sgRNA_library(sgRNA_library)
+
+  sgRNA_libfile_csv <- file.path(
+    system.file(
+      "extdata", "sgRNA_library", package = "crisprFlow"),
+    sgRNA_library,
+    glue::glue("sgRNA_library_{sgRNA_library}.csv")
+  )
+  assertthat::assert_that(
+    file.exists(sgRNA_libfile_csv),
+    msg = glue::glue("sgRNA library file not found at: '{sgRNA_libfile_csv}'")
+  )
+
+  # for reproducibility
+  set.seed(12345)
+
+  # Pool of characters: uppercase, lowercase, digits
+  chars <- c(letters, LETTERS, 0:9)
+
+  # Sample 9 characters and collapse into one string
+  rand_str <- paste0(sample(chars, 9, replace = TRUE), collapse = "")
+  message(glue::glue("Random string for output files: {rand_str}"))
+
+  tmp_prefix <- file.path(
+    output_dir, glue::glue("{sample_label}_{rand_str}"))
+  log_file <- file.path(
+    output_dir, glue::glue("{sample_label}.mageck_count.log"))
+
+  mageck_count_bin <- glue::glue("{mageck_bin} count")
+  if(count_N){
+    mageck_count_bin <- glue::glue("{mageck_bin} count --count-n")
+  }
+
+  mageck_count_command <-
+    glue::glue(
+      "{mageck_count_bin} -l {sgRNA_libfile_csv} ",
+      "--norm-method {norm_method} ",
+      "--sample-label {sample_label} ",
+      "-n {tmp_prefix} ",
+      "--fastq {fname_fastq} > {log_file} 2>&1"
+    )
+  exit_status <- system(mageck_count_command)
+
+  count_file <- glue::glue("{tmp_prefix}.count.txt")
+  summary_file <- glue::glue("{tmp_prefix}.countsummary.txt")
+  if(exit_status != 0 |
+     !file.exists(count_file) |
+     !file.exists(summary_file)){
+    system(glue::glue("rm -f {tmp_prefix}*"))
+    stop(glue::glue(
+      "Counting failed - see MAGeCK log at: '{log_file}'"))
+  }
+
+  counts <- as.data.frame(readr::read_tsv(
+    count_file, show_col_types = F))
+  stats <- as.data.frame(readr::read_tsv(
+    summary_file, show_col_types = F))
+
+  readr::write_tsv(
+    stats,
+    file = file.path(
+      output_dir,
+      glue::glue("{sample_label}.countsummary.txt")),
+    col_names = TRUE, quote = "none")
+
+  readr::write_tsv(
+    counts,
+    file = file.path(
+      output_dir,
+      glue::glue("{sample_label}.count.txt")),
+    col_names = TRUE, quote = "none")
+
+  ## delete temporary MAGeCK output (normalized counts, Rmarkdown
+  ## templates, MAGeCK log) and redundant log file
+  system(glue::glue("rm -f {tmp_prefix}*"))
+  system(glue::glue("rm -f {log_file}"))
+  message("Counting completed.")
+
+  count_results <- list()
+  count_results$stats <- stats
+  count_results$counts <- counts
+  return(count_results)
+}
+
+
 #' Check for expected FASTQ files in a directory
 #'
 #' This function checks if all expected FASTQ files are present
