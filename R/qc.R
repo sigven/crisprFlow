@@ -87,9 +87,12 @@ NULL
     ggplot2::theme(
       text = ggplot2::element_text(family = .qc_font()),
       strip.text = ggplot2::element_text(
-        size = base_size, face = "bold", family = .qc_font()),
+        size = base_size * 0.85, face = "plain",
+        colour = "grey50", family = .qc_font()
+      ),
       strip.background = ggplot2::element_rect(
-        fill = "grey95", colour = "grey80"),
+        fill = "grey97", colour = "grey88", linewidth = 0.3
+      ),
       legend.position = "right",
       panel.spacing = ggplot2::unit(0.8, "lines")
     )
@@ -525,7 +528,7 @@ qc_plot_read_mapping <- function(summary_df, meta, colour_by = "group",
       data = dplyr::filter(df, .data$status == "mapped"),
       ggplot2::aes(label = paste0(
         scales::percent(.data$pct_mapped, 0.1), .data$flag)),
-      colour = "grey15", size = 3.2, hjust = 0, x = 0.1,
+      colour = "white", size = 3.2, hjust = 0, x = 0.1,
       family = .qc_font()) +
     ggplot2::scale_fill_manual(values = fill_values, name = NULL) +
     ggplot2::labs(y = NULL, x = "Total reads (millions)") +
@@ -1155,7 +1158,7 @@ qc_plot_sgrna_phenotype_distribution <- function(
     candidate_hits |>
       dplyr::filter(.data$ctrl_type == "Real gene",
                     .data$classification %in%
-                      c("invasion_suppressor_confirmed",
+                      c("invasion_suppressor_bilateral",
                         "invasion_suppressor_likely")) |>
       dplyr::slice_min(.data$tvb_effect, n = n_suppressors) |>
       dplyr::select("Gene", "classification", "tvb_effect")
@@ -1185,7 +1188,7 @@ qc_plot_sgrna_phenotype_distribution <- function(
 
   cls_labels <- c(
     invasion_promoter             = "Invasion promoter",
-    invasion_suppressor_confirmed = "Invasion suppressor (confirmed)",
+    invasion_suppressor_bilateral = "Invasion suppressor (bilateral)",
     invasion_suppressor_likely    = "Invasion suppressor (likely)"
   )
   used_cls <- intersect(names(cls_labels),
@@ -1272,4 +1275,255 @@ qc_plot_sgrna_phenotype_distribution <- function(
     patchwork::wrap_plots(p_dens, p_strip, ncol = 1,
                           heights = c(1.5, n_genes * 0.45 + 0.4))
   }
+}
+
+
+## ── Plot: negative-control read proportion ────────────────────────────────────
+
+#' Plot the fraction of reads mapping to each negative-control group
+#'
+#' For each control type defined in \code{ctrl_patterns}, computes the
+#' percentage of total raw reads per sample that map to that control group,
+#' and plots the values as a dot plot faceted by control type. Stable
+#' proportions across samples confirm that control guides are evenly
+#' represented and that library composition has not shifted.
+#'
+#' @inheritParams qc_inputs
+#' @param ctrl_patterns Named character vector mapping display labels to regex
+#'   patterns used to identify control guides in the \code{Gene} column of
+#'   \code{counts}. For example:
+#'   \code{c("Non-targeting" = "NONE_TARGETING", "Safe-targeting" = "SAFE_TARGETING")}.
+#'   Each pattern is passed to \code{\link[stringr]{str_detect}}.
+#' @param colour_by Column in \code{meta} used for point colour (default
+#'   \code{"group"}).
+#' @param colours Optional named character vector of colours for the
+#'   \code{colour_by} levels.
+#' @param y_limits Optional numeric vector of length 2 (\code{c(min, max)})
+#'   passed to \code{ylim()}. If \code{NULL} (default), limits are set
+#'   automatically.
+#'
+#' @return A plotly object (\code{interactive = TRUE}) or a ggplot object;
+#'   NULL (with a message) if no guides match any pattern in
+#'   \code{ctrl_patterns}.
+#' @export
+#'
+#' @examples
+#' qc_plot_control_read_proportion(
+#'   exampleCounts, exampleSampleMeta,
+#'   ctrl_patterns = c("Negative controls" = "NEG_CTRL"),
+#'   interactive = FALSE
+#' )
+#'
+qc_plot_control_read_proportion <- function(
+    counts, meta,
+    ctrl_patterns = c("Negative controls" = "NEG_CTRL"),
+    colour_by  = "group",
+    colours    = NULL,
+    y_limits   = NULL,
+    interactive = TRUE,
+    base_size   = 11) {
+
+  qc_check_meta(meta, counts)
+  .check_meta_column(meta, colour_by, "colour_by")
+
+  assertthat::assert_that(
+    is.character(ctrl_patterns) && !is.null(names(ctrl_patterns)),
+    msg = "ctrl_patterns must be a named character vector"
+  )
+
+  sample_ids <- meta$sample_id
+  totals     <- colSums(counts[sample_ids], na.rm = TRUE)
+
+  pct_list <- lapply(names(ctrl_patterns), function(label) {
+    pattern <- ctrl_patterns[[label]]
+    idx     <- stringr::str_detect(counts$Gene, pattern)
+    if (!any(idx)) {
+      message("No guides match pattern '", pattern, "' (label: '", label, "')")
+      return(NULL)
+    }
+    pct <- colSums(counts[idx, sample_ids, drop = FALSE], na.rm = TRUE) /
+      totals * 100
+    tibble::tibble(
+      sample_id  = names(pct),
+      pct        = pct,
+      ctrl_label = label
+    )
+  })
+
+  d <- dplyr::bind_rows(pct_list)
+  if (nrow(d) == 0L) {
+    message("No guides matched any pattern in ctrl_patterns — returning NULL")
+    return(NULL)
+  }
+
+  d <- d |>
+    .join_meta(meta) |>
+    dplyr::mutate(
+      ctrl_label = factor(.data$ctrl_label, levels = names(ctrl_patterns)),
+      tooltip    = paste0(
+        "<b>", .data$label, "</b><br>",
+        .data$ctrl_label, ": ", round(.data$pct, 3), "%"
+      )
+    )
+
+  p <- ggplot2::ggplot(
+    d, ggplot2::aes(
+      x    = .data$label,
+      y    = .data$pct,
+      colour = .data[[colour_by]],
+      text = .data$tooltip
+    )
+  ) +
+    ggplot2::geom_point(size = 2.5, alpha = 0.9) +
+    ggplot2::facet_wrap(~ .data$ctrl_label, ncol = length(ctrl_patterns)) +
+    ggplot2::labs(x = NULL, y = "% of total read counts", colour = NULL) +
+    ggplot2::theme_bw(base_size = base_size) +
+    ggplot2::theme(
+      panel.grid.major.x = ggplot2::element_blank(),
+      panel.grid.minor   = ggplot2::element_blank(),
+      strip.background   = ggplot2::element_rect(fill = "grey95", colour = "grey70"),
+      strip.text         = ggplot2::element_text(size = base_size),
+      axis.text.x        = ggplot2::element_text(angle = 30, hjust = 1)
+    )
+
+  if (!is.null(colours)) {
+    p <- p + ggplot2::scale_colour_manual(values = colours)
+  }
+  if (!is.null(y_limits)) {
+    p <- p + ggplot2::ylim(y_limits)
+  }
+
+  if (interactive) .to_plotly(p) else p
+}
+
+
+## ── Plot: within-group replicate scatter ──────────────────────────────────────
+
+#' Within-group replicate scatter plots
+#'
+#' For each group in \code{meta}, plots all pairwise combinations of
+#' replicates as log2(CPM + 1) scatter plots, with a diagonal reference
+#' line and Pearson r annotated per panel. The result is a faceted grid
+#' with groups as rows and replicate pairs as columns — suitable for QC
+#' reports and supplementary figures.
+#'
+#' Only targeting sgRNAs (guides not matching \code{ctrl_pattern}) are
+#' included in both the scatter points and the correlation calculation,
+#' matching \code{\link{qc_replicate_correlation_table}}.
+#'
+#' @inheritParams qc_inputs
+#' @param by Column in \code{meta} defining replicate groups (default
+#'   \code{"group"}). Groups with only one sample are skipped.
+#' @param point_colour Colour for scatter points (default \code{"#444444"}).
+#' @param point_alpha Alpha for points (default \code{0.25}).
+#' @param point_size Point size (default \code{0.6}).
+#' @param axis_limits Optional numeric vector \code{c(min, max)} applied to
+#'   both axes. If \code{NULL} (default) the range is set automatically from
+#'   the data.
+#'
+#' @return A ggplot object (faceted grid). Plotly is not supported for this
+#'   plot due to the number of panels; \code{interactive} is accepted for
+#'   API consistency but always returns ggplot.
+#' @export
+#'
+#' @examples
+#' qc_plot_replicate_scatter(exampleCounts, exampleSampleMeta,
+#'                           interactive = FALSE)
+#'
+qc_plot_replicate_scatter <- function(
+    counts, meta,
+    ctrl_pattern  = "NEG_CTRL",
+    by            = "group",
+    point_colour  = "#444444",
+    point_alpha   = 0.25,
+    point_size    = 0.6,
+    axis_limits   = NULL,
+    interactive   = TRUE,
+    base_size     = 11) {
+
+  qc_check_meta(meta, counts)
+  .check_meta_column(meta, by, "by")
+
+  lmat <- qc_log2cpm(counts, meta$sample_id, ctrl_pattern)
+
+  groups <- meta |>
+    dplyr::group_by(.data[[by]]) |>
+    dplyr::filter(dplyr::n() > 1) |>
+    dplyr::group_split()
+
+  if (length(groups) == 0L) {
+    message("No group has more than one replicate — returning NULL")
+    return(NULL)
+  }
+
+  pair_rows <- lapply(groups, function(g) {
+    grp_name <- g[[by]][1]
+    sids     <- g$sample_id
+    labs     <- stats::setNames(g$label, g$sample_id)
+    pairs    <- utils::combn(sids, 2, simplify = FALSE)
+    lapply(pairs, function(p) {
+      x_id <- p[1]; y_id <- p[2]
+      r    <- stats::cor(lmat[, x_id], lmat[, y_id], method = "pearson")
+      tibble::tibble(
+        grp        = grp_name,
+        pair_label = paste0(labs[x_id], " vs ", labs[y_id]),
+        x          = lmat[, x_id],
+        y          = lmat[, y_id],
+        r          = r
+      )
+    })
+  })
+
+  d <- dplyr::bind_rows(unlist(pair_rows, recursive = FALSE))
+
+  grp_levels   <- unique(meta[[by]])
+  grp_levels   <- grp_levels[grp_levels %in% d$grp]
+  d$grp        <- factor(d$grp, levels = grp_levels)
+  d$pair_label <- factor(d$pair_label, levels = unique(d$pair_label))
+
+  r_labels <- dplyr::distinct(d, .data$grp, .data$pair_label, .data$r)
+
+  xy_range <- if (!is.null(axis_limits)) {
+    axis_limits
+  } else {
+    c(floor(min(d$x, d$y)), ceiling(max(d$x, d$y)))
+  }
+
+  p <- ggplot2::ggplot(d, ggplot2::aes(x = .data$x, y = .data$y)) +
+    ggplot2::geom_point(
+      colour = point_colour, alpha = point_alpha, size = point_size, shape = 16
+    ) +
+    ggplot2::geom_abline(
+      slope = 1, intercept = 0,
+      colour = "#CC0000", linewidth = 0.4, linetype = "dashed"
+    ) +
+    ggplot2::geom_text(
+      data = r_labels,
+      ggplot2::aes(
+        x     = xy_range[1] + diff(xy_range) * 0.05,
+        y     = xy_range[2] - diff(xy_range) * 0.05,
+        label = paste0("r = ", round(.data$r, 3))
+      ),
+      hjust = 0, vjust = 1, size = base_size * 0.28,
+      colour = "#333333", inherit.aes = FALSE
+    ) +
+    ggplot2::facet_grid(
+      rows = ggplot2::vars(.data$grp),
+      cols = ggplot2::vars(.data$pair_label)
+    ) +
+    ggplot2::coord_fixed(xlim = xy_range, ylim = xy_range) +
+    ggplot2::labs(
+      x = expression(log[2](CPM + 1) ~ "(replicate A)"),
+      y = expression(log[2](CPM + 1) ~ "(replicate B)")
+    ) +
+    ggplot2::theme_bw(base_size = base_size) +
+    ggplot2::theme(
+      strip.background = ggplot2::element_rect(fill = "grey95", colour = "grey70"),
+      strip.text.x     = ggplot2::element_text(size = base_size * 0.85),
+      strip.text.y     = ggplot2::element_text(size = base_size * 0.85, angle = 0),
+      panel.grid.minor = ggplot2::element_blank(),
+      axis.text        = ggplot2::element_text(size = base_size * 0.75)
+    )
+
+  p
 }
