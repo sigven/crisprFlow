@@ -5,11 +5,11 @@
 <!-- badges: end -->
 
 The goal of crisprFlow is to provide wrappers and functions to facilitate the 
-analysis of CRISPR-Cas9 screening data, from raw sequencing reads to biological 
-insights. The package includes functions for quality control assessment, 
+analysis of CRISPR-Cas9 sequencing data - from raw sgRNA sequencing reads to biological 
+insights. The R package includes functions for quality control assessment, 
 guide RNA counting, normalization, statistical analysis, and visualization 
-of results. Importantly, the tool provides a reporting framework to ensure
-reproducibility and transparency of the analysis workflow.
+of results. 
+
 
 Currently, the package requires installation of external tools (non R-based) 
 that are not automatically installed (*MAGeCK*, *guide-counter*). A containerized
