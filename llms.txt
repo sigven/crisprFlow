@@ -1,0 +1,130 @@
+# crisprFlow
+
+The goal of crisprFlow is to provide wrappers and functions to
+facilitate the analysis of CRISPR-Cas9 screening data, from raw
+sequencing reads to biological insights. The package includes functions
+for quality control assessment, guide RNA counting, normalization,
+statistical analysis, and visualization of results. Importantly, the
+tool provides a reporting framework to ensure reproducibility and
+transparency of the analysis workflow.
+
+Currently, the package requires installation of external tools (non
+R-based) that are not automatically installed (*MAGeCK*,
+*guide-counter*). A containerized version of the package is under
+development to ease the installation process.
+
+## Installation
+
+You can install the development version of crisprFlow like so:
+
+``` r
+
+remotes::install_github("sigven/crisprFlow")
+```
+
+## Output examples
+
+[TABLE]
+
+# Package index
+
+## All functions
+
+- [`check_fastq_files()`](check_fastq_files.md) : Check for expected
+  FASTQ files in a directory
+- [`clean_treatment_timepoint_label()`](clean_treatment_timepoint_label.md)
+  : Function to clean treatment and timepoint labels from a data frame
+  This function separates the 'label' column into 'treatment' and
+  'timepoint' columns, removes any existing 'treatment' and 'timepoint'
+  columns, and arranges the data frame by timepoint
+- [`count_sgRNA_guidecounter()`](count_sgRNA_guidecounter.md) : Count
+  sgRNA from FASTQ files using guide-counter
+- [`count_sgRNA_guidecounter_fastq()`](count_sgRNA_guidecounter_fastq.md)
+  : Count sgRNA from FASTQ files using guide-counter (alternative
+  version)
+- [`count_sgRNA_mageck()`](count_sgRNA_mageck.md) : Count sgRNA from
+  FASTQ files using MAGECK
+- [`count_sgRNA_mageck_fastq()`](count_sgRNA_mageck_fastq.md) : Count
+  sgRNA from a single FASTQ file using MAGeCK
+- [`detect_hits_drugz()`](detect_hits_drugz.md) : Run DrugZ for hit
+  detection
+- [`detect_hits_fpa()`](detect_hits_fpa.md) : Run FPA for hit detection
+- [`detect_hits_mageck_mle()`](detect_hits_mageck_mle.md) : Run MAGeCK
+  MLE for hit detection
+- [`estimate_fold_change()`](estimate_fold_change.md) : Estimate log2
+  fold change of sgRNA counts between arbitrary conditions
+- [`exampleCountSummary`](exampleCountSummary.md) : Simulated CRISPR
+  screen: count summary
+- [`exampleCounts`](exampleCounts.md) : Simulated CRISPR screen: sgRNA
+  counts
+- [`exampleSampleMeta`](exampleSampleMeta.md) : Simulated CRISPR screen:
+  sample table
+- [`gini_index()`](gini_index.md) : Compute the Gini coefficient/index
+  for a numeric vector x.
+- [`gini_index2()`](gini_index2.md) : Compute the Gini coefficient/index
+  for a numeric vector x.
+- [`plot_fc_scatterplot()`](plot_fc_scatterplot.md) : Plot fold change
+  scatterplot, drug vs. T0, control vs. T0
+- [`plot_sgRNA_gini_index()`](plot_sgRNA_gini_index.md) : Plot sgRNA
+  Gini index bar plot
+- [`plot_sgRNA_histogram()`](plot_sgRNA_histogram.md) : Plot sgRNA count
+  distribution histogram
+- [`plot_sgRNA_mapping()`](plot_sgRNA_mapping.md) : Plot sgRNA mapping
+  statistics bar plot
+- [`plot_sgRNA_missing()`](plot_sgRNA_missing.md) : Plot sgRNA zero
+  counts bar plot
+- [`plot_sgRNA_pca()`](plot_sgRNA_pca.md) : Plot PCA of sgRNA count data
+- [`qc_check_library_concordance()`](qc_check_library_concordance.md) :
+  Check that the counted sgRNAs match the intended library
+- [`qc_check_meta()`](qc_check_meta.md) : Check a sample table (and its
+  match to a count matrix)
+- [`qc_genes_with_lost_guides()`](qc_genes_with_lost_guides.md) : Genes
+  that lost many of their sgRNAs
+- [`qc_guide_representation()`](qc_guide_representation.md) : Detect
+  sgRNAs at one or more reference stages
+- [`qc_inputs`](qc_inputs.md) : Inputs shared by the QC functions
+- [`qc_log2cpm()`](qc_log2cpm.md) : log2 CPM matrix of targeting sgRNAs
+- [`qc_plot_control_guides()`](qc_plot_control_guides.md) : Plot control
+  sgRNA abundance across samples
+- [`qc_plot_control_read_proportion()`](qc_plot_control_read_proportion.md)
+  : Plot the fraction of reads mapping to each negative-control group
+- [`qc_plot_count_distribution()`](qc_plot_count_distribution.md) : Plot
+  sgRNA count distributions
+- [`qc_plot_guide_detection()`](qc_plot_guide_detection.md) : Plot
+  detected and lost sgRNAs per stage
+- [`qc_plot_pca()`](qc_plot_pca.md) : Plot a PCA of samples
+- [`qc_plot_read_mapping()`](qc_plot_read_mapping.md) : Plot mapped and
+  unmapped reads per sample
+- [`qc_plot_replicate_correlation()`](qc_plot_replicate_correlation.md)
+  : Plot sample-to-sample correlations
+- [`qc_plot_replicate_scatter()`](qc_plot_replicate_scatter.md) :
+  Within-group replicate scatter plots
+- [`qc_plot_sample_metric()`](qc_plot_sample_metric.md) : Plot a
+  per-sample metric
+- [`qc_plot_sgrna_phenotype_distribution()`](qc_plot_sgrna_phenotype_distribution.md)
+  : sgRNA-level phenotype distribution with per-gene strip chart
+- [`qc_read_count_dir()`](qc_read_count_dir.md) : Read and merge
+  per-sample count files
+- [`qc_read_count_summary()`](qc_read_count_summary.md) : Read a count
+  summary file
+- [`qc_read_counts()`](qc_read_counts.md) : Read a merged count matrix
+- [`qc_read_library()`](qc_read_library.md) : Read an sgRNA library
+- [`qc_read_summary_dir()`](qc_read_summary_dir.md) : Read and combine
+  per-sample count summaries
+- [`qc_replicate_correlation_table()`](qc_replicate_correlation_table.md)
+  : Within-group replicate correlations
+- [`qc_sample_stats()`](qc_sample_stats.md) : Per-sample sgRNA count
+  statistics
+- [`read_sgRNA_counts()`](read_sgRNA_counts.md) : Read sgRNA count data
+  from a MAGeCK/guide-counter count file
+- [`read_sgRNA_counts2()`](read_sgRNA_counts2.md) : Read sgRNA count
+  data from a MAGeCK/guide-counter count file and separate targeted
+  sgRNAs and controls
+- [`read_sgRNA_summary()`](read_sgRNA_summary.md) : Read sgRNA summary
+  statistics from a MAGeCK/guide-counter summary file
+
+# Articles
+
+### All vignettes
+
+- [Quality control of CRISPR screen counts](quality_control.md):

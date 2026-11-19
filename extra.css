@@ -1,0 +1,5 @@
+/* Cap hex logo size on pkgdown homepage */
+img.logo {
+  max-width: 200px !important;
+  width: 200px !important;
+}
