@@ -1,5 +1,5 @@
 
-## crisprFlow <img src="man/figures/logo.png" align="right" height="134" alt="" />
+# crisprFlow <img src="man/figures/logo.png" align="right" height="65" alt="" />
 
 <!-- badges: start -->
 <!-- badges: end -->
@@ -24,13 +24,44 @@ You can install the development version of crisprFlow like so:
 remotes::install_github("sigven/crisprFlow")
 ```
 
-## Example
+## Output examples
 
-This is a basic example which shows you how to solve a common problem:
+<table>
+<tr>
+<td width="50%">
 
-``` r
-library(crisprFlow)
+**Read mapping QC**<br>
+Per-sample mapping rates with configurable minimum thresholds.
 
-## - COMING
-```
+<img src="man/figures/ex_read_mapping.png" width="100%"/>
+
+</td>
+<td width="50%">
+
+**Count distribution**<br>
+Per-sample log-count distributions with low-count and median markers.
+
+<img src="man/figures/ex_count_distribution.png" width="100%"/>
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Sample PCA**<br>
+Principal component analysis of guide-level counts, coloured by group and shaped by replicate.
+
+<img src="man/figures/ex_pca.png" width="100%"/>
+
+</td>
+<td width="50%">
+
+**Replicate correlation**<br>
+Pairwise scatter plots across all replicates with Pearson *r* annotation.
+
+<img src="man/figures/ex_replicate_correlation.png" width="100%"/>
+
+</td>
+</tr>
+</table>
 
