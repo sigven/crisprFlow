@@ -1117,6 +1117,10 @@ qc_plot_control_guides <- function(counts, meta, ctrl_pattern = "NEG_CTRL",
 #'   \code{NULL} (default) all classified hit genes are eligible.
 #' @param x_limits Numeric vector of length 2 giving x-axis limits
 #'   (default \code{c(-4.5, 4.5)}).
+#' @param y_scale Y-axis scale for the density panel: \code{"count"} (default)
+#'   scales the kernel density estimate by the number of sgRNAs so the axis
+#'   reads as approximate counts; \code{"density"} shows the raw probability
+#'   density.
 #' @param interactive Logical. \code{FALSE} (default) returns a combined
 #'   patchwork static figure (density + strips). \code{TRUE} returns a
 #'   plotly strip chart only (with hover tooltips showing sgRNA, gene, and LFC).
@@ -1136,9 +1140,12 @@ qc_plot_sgrna_phenotype_distribution <- function(
   ctrl_pattern    = "NEG_CTRL|SAFE_TARGETING",
   restrict_genes  = NULL,
   x_limits        = c(-4.5, 4.5),
+  y_scale         = c("count", "density"),
   interactive     = FALSE,
   base_size       = 11
 ) {
+  y_scale <- match.arg(y_scale)
+
   real_sgrna <- sgrna_fc |>
     dplyr::filter(!stringr::str_detect(.data$Gene, ctrl_pattern)) |>
     dplyr::rename(lfc = dplyr::all_of(fc_col))
@@ -1195,8 +1202,14 @@ qc_plot_sgrna_phenotype_distribution <- function(
                         unique(as.character(strip_df$classification)))
 
   ## -- Density: all real-gene sgRNAs ------------------------------------------
-  p_dens <- ggplot2::ggplot(real_sgrna,
-                             ggplot2::aes(x = .data$lfc)) +
+  dens_aes <- if (y_scale == "count") {
+    ggplot2::aes(x = .data$lfc, y = ggplot2::after_stat(count))
+  } else {
+    ggplot2::aes(x = .data$lfc)
+  }
+  y_label <- if (y_scale == "count") "Frequency" else "Density"
+
+  p_dens <- ggplot2::ggplot(real_sgrna, dens_aes) +
     ggplot2::geom_density(fill = "#D0D0D0", colour = "#888888",
                           alpha = 0.8, linewidth = 0.6, adjust = 1.0) +
     ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
@@ -1204,7 +1217,7 @@ qc_plot_sgrna_phenotype_distribution <- function(
     ggplot2::scale_x_continuous(limits = x_limits, expand = c(0, 0)) +
     ggplot2::labs(
       x        = NULL,
-      y        = "Density",
+      y        = y_label,
       subtitle = paste0("All real-gene sgRNAs (n = ",
                         scales::comma(nrow(real_sgrna)), ")")
     ) +

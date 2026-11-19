@@ -1,5 +1,5 @@
 
-# crisprFlow <img src="man/figures/logo.png" align="right" height="120" alt="" />
+# crisprFlow <img src="man/figures/logo.png" align="right" height="160" alt="" />
 
 <!-- badges: start -->
 <!-- badges: end -->
